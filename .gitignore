@@ -1,6 +1,11 @@
 __pycache__/
 *.pyc
 .venv/
+*.egg-info/
+build/
+dist/
 results.jsonl
 results-*.jsonl
 .env
+.env.*
+*.env
