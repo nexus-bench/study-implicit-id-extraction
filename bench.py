@@ -221,7 +221,7 @@ def run_one(provider, record_id, repeat, model, key, timeout, retries, cooldown,
 
 def table(rows, providers, model, requests_per_provider):
     print(f"Model: {model}")
-    print("Test: Extract the ID implied by a Form label while preserving an empty nickname and a missing middle name in JSON.")
+    print("Test: Extract implied IDs while distinguishing empty from missing fields.")
     print("Provider                         % correct  correct  wrong  invalid  errors")
     print("-" * 76)
     for provider in providers:
