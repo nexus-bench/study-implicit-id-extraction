@@ -1,7 +1,9 @@
 # Implicit record ID extraction, small mirror
 
-[DeepSeek V4.1 Flash results](RESULTS.md) and [GLM-5.3-Flash results](RESULTS-GLM.md)
-from 2026-10-03 include provider tables and raw request/response evidence.
+[DeepSeek V4.1 Flash all-provider results](RESULTS.md),
+[DeepSeek top-five results](RESULTS-DS-TOP5.md), and
+[GLM-5.3-Flash top-five results](RESULTS-GLM.md) from 2026-10-03 include
+provider tables and raw request/response evidence.
 
 This standalone Python project reproduces the implicit ID extraction condition from
 [`llm-provider-bench`](https://github.com/nexus-bench/llm-provider-bench). The
