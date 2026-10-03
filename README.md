@@ -1,5 +1,8 @@
 # Implicit record ID extraction, small mirror
 
+[DeepSeek V4.1 Flash results from 2026-10-03](RESULTS.md) include the full
+provider table and raw request/response evidence.
+
 This standalone Python project reproduces the implicit ID extraction condition from
 [`llm-provider-bench`](https://github.com/nexus-bench/llm-provider-bench). The
 historical task asks a model to extract `id`, an explicitly empty `nickname`, and
