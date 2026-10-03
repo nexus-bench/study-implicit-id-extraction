@@ -105,7 +105,7 @@ def resolve_key(env_file):
     return key_from_env_file(local) if local.is_file() else None
 
 
-def payload(model, provider, record_id, max_tokens=8192, temperature=1):
+def payload(model, provider, record_id, max_tokens=8192, temperature=0):
     return {
         "model": model,
         "messages": [
@@ -258,7 +258,7 @@ def main(argv=None):
     parser.add_argument("--timeout", type=float, default=60, help="socket timeout in seconds per attempt (default: 60)")
     parser.add_argument("--retries", type=int, default=3, help="retries after 429 or 5xx (default: 3)")
     parser.add_argument("--max-tokens", type=int, default=8192, help="output token cap per request (default: 8192)")
-    parser.add_argument("--temperature", type=float, default=1, help="sampling temperature from 0 to 2 (default: 1)")
+    parser.add_argument("--temperature", type=float, default=0, help="sampling temperature from 0 to 2 (default: 0)")
     volume = parser.add_mutually_exclusive_group()
     volume.add_argument("--num-requests", type=int, metavar="N", help="requests per provider (default: 20)")
     volume.add_argument("--repeats", type=int, help="full passes over the ten fuzzy cases; 1 gives ten requests")
