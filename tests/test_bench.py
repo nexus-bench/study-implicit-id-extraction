@@ -56,43 +56,58 @@ class ExperimentTests(unittest.TestCase):
         self.assertIn("ready/fp8", output.getvalue())
         run.assert_not_called()
 
-    def test_all_providers_runs_ten_each(self):
+    def test_all_providers_runs_twenty_each(self):
         with TemporaryDirectory() as directory:
             output = Path(directory) / "results.jsonl"
-            def fake_run(provider, record_id, model, key, timeout, retries, cooldown):
-                return {"provider": provider, "id": record_id, "status": "correct"}
+            def fake_run(provider, record_id, repeat, model, key, timeout, retries, cooldown):
+                return {"provider": provider, "id": record_id, "repeat": repeat, "status": "correct"}
             with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), \
                  patch.object(bench, "discover_providers", return_value={"ready/fp8": "Ready"}), \
                  patch.object(bench, "run_one", side_effect=fake_run) as run, \
                  redirect_stdout(StringIO()) as printed:
                 code = bench.main(["--model", "z-ai/glm-5.3-flash", "--all-providers", "--output", str(output)])
             self.assertEqual(code, 0)
-            self.assertEqual(run.call_count, 10)
-            self.assertEqual(len(output.read_text().splitlines()), 10)
+            self.assertEqual(run.call_count, 20)
+            rows = [json.loads(line) for line in output.read_text().splitlines()]
+            self.assertEqual(len(rows), 20)
+            self.assertEqual(len({(row["id"], row["repeat"]) for row in rows}), 20)
             self.assertIn("z-ai/glm-5.3-flash", printed.getvalue())
             self.assertIn("100%", printed.getvalue())
 
     def test_no_target_defaults_to_top_five(self):
         with TemporaryDirectory() as directory:
             output = Path(directory) / "results.jsonl"
-            def fake_run(provider, record_id, model, key, timeout, retries, cooldown):
-                return {"provider": provider, "id": record_id, "status": "correct"}
+            def fake_run(provider, record_id, repeat, model, key, timeout, retries, cooldown):
+                return {"provider": provider, "id": record_id, "repeat": repeat, "status": "correct"}
             with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), \
                  patch.object(bench, "discover_providers", return_value={"ready/fp8": "Ready"}) as discover, \
                  patch.object(bench, "run_one", side_effect=fake_run), \
                  redirect_stdout(StringIO()):
                 self.assertEqual(bench.main(["--output", str(output)]), 0)
             discover.assert_called_once_with(bench.MODEL, "test-key", 60, 5)
-            self.assertEqual(len(output.read_text().splitlines()), 10)
+            self.assertEqual(len(output.read_text().splitlines()), 20)
 
-    def test_percent_correct_uses_all_ten_cases(self):
-        rows = ([{"provider": "ready/fp8", "status": "correct"}] * 7
+    def test_repeats_one_runs_each_case_once(self):
+        with TemporaryDirectory() as directory:
+            output = Path(directory) / "results.jsonl"
+            def fake_run(provider, record_id, repeat, model, key, timeout, retries, cooldown):
+                return {"provider": provider, "id": record_id, "repeat": repeat, "status": "correct"}
+            with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), \
+                 patch.object(bench, "discover_providers", return_value={"ready/fp8": "Ready"}), \
+                 patch.object(bench, "run_one", side_effect=fake_run), \
+                 redirect_stdout(StringIO()) as printed:
+                self.assertEqual(bench.main(["--repeats", "1", "--output", str(output)]), 0)
+            self.assertEqual(len(output.read_text().splitlines()), 10)
+            self.assertIn("10/10", printed.getvalue())
+
+    def test_percent_correct_uses_twenty_scheduled_requests(self):
+        rows = ([{"provider": "ready/fp8", "status": "correct"}] * 14
                 + [{"provider": "ready/fp8", "status": status}
-                   for status in ("wrong", "invalid", "error")])
+                   for status in ("wrong", "wrong", "wrong", "wrong", "invalid", "error")])
         with redirect_stdout(StringIO()) as output:
-            bench.table(rows, ["ready/fp8"], "example/model")
+            bench.table(rows, ["ready/fp8"], "example/model", 20)
         self.assertIn("70%", output.getvalue())
-        self.assertIn("7/10", output.getvalue())
+        self.assertIn("14/20", output.getvalue())
 
     def test_ten_implicit_requests(self):
         self.assertEqual(len(bench.IDS), 10)

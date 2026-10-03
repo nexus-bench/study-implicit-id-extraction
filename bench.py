@@ -1,4 +1,4 @@
-"""Ten implicit record-ID extraction requests per pinned OpenRouter provider."""
+"""Repeat ten implicit record-ID extraction cases per pinned OpenRouter provider."""
 
 import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -69,7 +69,9 @@ def discover_providers(model, key, timeout, top=None):
         with urlopen(Request(url, headers=headers), timeout=timeout) as response:
             return select_providers(json.load(response), model, top)
     except HTTPError as exc:
-        raise ValueError(f"endpoint catalog returned HTTP {exc.code}") from exc
+        code = exc.code
+        exc.close()
+        raise ValueError(f"endpoint catalog returned HTTP {code}") from exc
     except (URLError, TimeoutError, OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise ValueError(f"endpoint catalog unavailable: {type(exc).__name__}") from exc
 
@@ -168,18 +170,21 @@ def request(body, key, timeout, retries, cooldown=None):
             with urlopen(req, timeout=timeout) as response:
                 return json.load(response), attempt + 1, None
         except HTTPError as exc:
-            if exc.code == 429:
-                delay = retry_delay(exc.headers.get("Retry-After"), attempt)
+            code = exc.code
+            retry_after = exc.headers.get("Retry-After")
+            exc.close()
+            if code == 429:
+                delay = retry_delay(retry_after, attempt)
                 if cooldown is not None:
                     cooldown.defer(delay)
                 if attempt < retries:
                     if cooldown is None:
                         time.sleep(delay)
                     continue
-            elif 500 <= exc.code <= 599 and attempt < retries:
-                time.sleep(retry_delay(exc.headers.get("Retry-After"), attempt))
+            elif 500 <= code <= 599 and attempt < retries:
+                time.sleep(retry_delay(retry_after, attempt))
                 continue
-            return None, attempt + 1, f"HTTP {exc.code}"
+            return None, attempt + 1, f"HTTP {code}"
         except (URLError, TimeoutError, OSError) as exc:
             return None, attempt + 1, f"transport: {type(exc).__name__}"
         except (ValueError, UnicodeError) as exc:
@@ -202,18 +207,18 @@ def score(response, record_id):
     return "correct" if answer == {"id": record_id, "nickname": "", "middle_name": None} else "wrong"
 
 
-def run_one(provider, record_id, model, key, timeout, retries, cooldown):
+def run_one(provider, record_id, repeat, model, key, timeout, retries, cooldown):
     body = payload(model, provider, record_id)
     response, attempts, error = request(body, key, timeout, retries, cooldown)
     return {
         "completed_at_utc": datetime.now(timezone.utc).isoformat(),
-        "provider": provider, "id": record_id,
+        "provider": provider, "id": record_id, "repeat": repeat,
         "request": body, "response": response, "attempts": attempts,
         "status": "error" if error else score(response, record_id), "error": error,
     }
 
 
-def table(rows, providers, model):
+def table(rows, providers, model, requests_per_provider):
     print(f"Model: {model}")
     print("Provider                         % correct  correct  wrong  invalid  errors")
     print("-" * 76)
@@ -223,9 +228,9 @@ def table(rows, providers, model):
         wrong = sum(r["status"] == "wrong" for r in subset)
         invalid = sum(r["status"] in ("invalid", "incomplete") for r in subset)
         errors = sum(r["status"] == "error" for r in subset)
-        percent = 100 * correct // len(IDS)
-        print(f"{provider[:32]:32} {percent:>3}%       {correct:>2}/10      {wrong:>2}       {invalid:>2}       {errors:>2}")
-    print("% correct = correct / 10 scheduled requests; errors and invalid outputs are not correct.")
+        percent = 100 * correct // requests_per_provider
+        print(f"{provider[:32]:32} {percent:>3}%       {correct:>2}/{requests_per_provider}      {wrong:>2}       {invalid:>2}       {errors:>2}")
+    print(f"% correct = correct / {requests_per_provider} scheduled requests; errors and invalid outputs are not correct.")
 
 
 def main(argv=None):
@@ -233,19 +238,20 @@ def main(argv=None):
     target = parser.add_mutually_exclusive_group()
     target.add_argument("--provider", action="append", help="endpoint tag; repeat for a selected subset")
     target.add_argument("--list-providers", action="store_true", help="list eligible endpoints without making paid requests")
-    target.add_argument("--all-providers", action="store_true", help="run ten requests against every eligible provider tag")
+    target.add_argument("--all-providers", action="store_true", help="run all cases against every eligible provider tag")
     target.add_argument("--top", type=int, metavar="N", help="run the N eligible tags with highest recent median throughput")
     parser.add_argument("--model", default=MODEL)
     parser.add_argument("--env-file", type=Path, help="read OPENROUTER_API_KEY from this file; otherwise use the environment or .env")
     parser.add_argument("--concurrency", type=int, default=5)
     parser.add_argument("--timeout", type=float, default=60)
     parser.add_argument("--retries", type=int, default=3)
+    parser.add_argument("--repeats", type=int, default=2, help="runs per fuzzy case and provider (default: 2, or 20 requests per provider)")
     parser.add_argument("--output", type=Path, help="JSONL output path; default is a new timestamped file")
     args = parser.parse_args(argv)
     if not (args.provider or args.list_providers or args.all_providers or args.top):
         args.top = 5
-    if args.concurrency < 1 or args.timeout <= 0 or not 0 <= args.retries <= 10:
-        parser.error("concurrency and timeout must be positive; retries must be 0–10")
+    if args.concurrency < 1 or args.timeout <= 0 or not 0 <= args.retries <= 10 or args.repeats < 1:
+        parser.error("concurrency, timeout, and repeats must be positive; retries must be 0–10")
     if args.top is not None and args.top < 1:
         parser.error("--top must be positive")
     if args.provider and len(set(args.provider)) != len(args.provider):
@@ -275,7 +281,8 @@ def main(argv=None):
         args.output = Path(datetime.now(timezone.utc).strftime("results-%Y%m%dT%H%M%S%fZ.jsonl"))
     if args.output.exists():
         parser.error(f"output already exists: {args.output}")
-    jobs = [(provider, record_id) for provider in providers for record_id in IDS]
+    jobs = [(provider, record_id, repeat)
+            for provider in providers for repeat in range(1, args.repeats + 1) for record_id in IDS]
     rows = []
     cooldown = RateLimitCooldown()
     with args.output.open("x", encoding="utf-8") as stream:
@@ -287,8 +294,8 @@ def main(argv=None):
                 rows.append(row)
                 stream.write(json.dumps(row, ensure_ascii=False) + "\n")
                 stream.flush()
-    rows.sort(key=lambda r: (providers.index(r["provider"]), IDS.index(r["id"])))
-    table(rows, providers, args.model)
+    rows.sort(key=lambda r: (providers.index(r["provider"]), r["repeat"], IDS.index(r["id"])))
+    table(rows, providers, args.model, len(IDS) * args.repeats)
     print(f"Details: {args.output}")
     return int(any(r["status"] in ("error", "invalid", "incomplete") for r in rows))
 

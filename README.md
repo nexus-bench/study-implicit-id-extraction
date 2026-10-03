@@ -8,8 +8,9 @@ provider tables and raw request/response evidence.
 This standalone Python project reproduces the implicit ID extraction condition from
 [`llm-provider-bench`](https://github.com/nexus-bench/llm-provider-bench). The
 historical task asks a model to extract `id`, an explicitly empty `nickname`, and
-an absent `middle_name`. Each provider receives ten `Form K111:` through
-`Form K120:` requests. The explicit `Record ID:` control is omitted.
+an absent `middle_name`. Each provider receives the ten `Form K111:` through
+`Form K120:` cases twice by default: 20 requests total. The explicit
+`Record ID:` control is omitted.
 
 The script uses OpenRouter's chat completions endpoint. Running `python bench.py`
 defaults to the five fastest eligible provider tags for DeepSeek V4.1 Flash;
@@ -35,7 +36,6 @@ python bench.py
 
 Discover eligible provider tags for either model without making completion
 requests:
-provider tags for either model without making completion requests:
 
 ```sh
 python bench.py --model deepseek/deepseek-v4.1-flash --list-providers
@@ -51,6 +51,7 @@ python bench.py --model z-ai/glm-5.3-flash --provider deepinfra/fp4 --provider f
 python bench.py --model deepseek/deepseek-v4.1-flash --all-providers
 python bench.py --model deepseek/deepseek-v4.1-flash --top 5
 python bench.py --model z-ai/glm-5.3-flash --top 10
+python bench.py --repeats 1  # ten requests per provider
 ```
 
 `--top N` selects the N eligible provider tags with the highest p50 throughput
@@ -58,17 +59,19 @@ reported by OpenRouter for the last 30 minutes. Tags without a throughput
 measurement are excluded, so fewer than N may be selected. Duplicate endpoints
 with one tag use the highest reported throughput. This selects for speed, not
 correctness, and the selected set can change between runs. `--all-providers`
-makes ten requests for every listed tag, so inspect the list first. The default
-is five requests at once across the whole run, with a 60-second socket timeout
-per attempt. Adjust with `--concurrency` and
-`--timeout`; `--retries` controls retries for HTTP 429 and 5xx responses.
+makes 20 requests for every listed tag by default, so inspect the list first.
+The default is five requests at once across the whole run, with a 60-second
+socket timeout per attempt. Adjust with `--concurrency` and `--timeout`;
+`--repeats` changes the number of runs per fuzzy case, while `--retries`
+controls retries for HTTP 429 and 5xx responses.
 `Retry-After` is honored when supplied. A 429 starts a shared cooldown: all
 workers wait before their next attempt, including queued requests. Requests
 already in flight may finish. A 5xx backs off only its own request. Each
 logical request is scored once after its final attempt.
 
-The table leads with **% correct = correct responses / 10 scheduled requests**
-for each provider tag, and shows `correct/10` beside it. Wrong answers, invalid
+The table leads with **% correct = correct responses / 20 scheduled requests**
+for each provider tag by default, and shows `correct/20` beside it. Wrong
+answers, invalid
 or incomplete outputs, and request errors remain separate columns. An error or
 invalid output contributes zero to `% correct`; inspect those columns before
 interpreting a provider difference. Full request and response records go to a
@@ -82,6 +85,6 @@ repeat a request that the server already processed and may incur another charge.
 
 Source: `packages/evaluation/src/id-diagnostic.ts` and
 `docs/OPENROUTER_ID_STUDY.md` on the source repository's
-`codex/openrouter-id-study` branch. This mirror uses ten implicit cases instead
-of its larger paired, repeated panel. The GLM model option is an extension of
+`codex/openrouter-id-study` branch. This mirror repeats ten implicit cases
+instead of its larger paired panel. The GLM model option is an extension of
 the historical DeepSeek diagnostic.
