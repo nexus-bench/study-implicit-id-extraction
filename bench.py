@@ -74,6 +74,34 @@ def discover_providers(model, key, timeout, top=None):
         raise ValueError(f"endpoint catalog unavailable: {type(exc).__name__}") from exc
 
 
+def key_from_env_file(path):
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeError) as exc:
+        raise ValueError(f"cannot read env file {path}: {type(exc).__name__}") from exc
+    for line in lines:
+        line = line.strip()
+        if line.startswith("export "):
+            line = line[7:].lstrip()
+        name, separator, value = line.partition("=")
+        if separator and name.strip() == "OPENROUTER_API_KEY":
+            value = value.strip()
+            if len(value) >= 2 and value[0] in "\"'" and value[-1] == value[0]:
+                value = value[1:-1]
+            return value
+    return None
+
+
+def resolve_key(env_file):
+    if env_file is not None:
+        return key_from_env_file(env_file)
+    key = os.environ.get("OPENROUTER_API_KEY")
+    if key:
+        return key
+    local = Path(".env")
+    return key_from_env_file(local) if local.is_file() else None
+
+
 def payload(model, provider, record_id):
     return {
         "model": model,
@@ -202,26 +230,32 @@ def table(rows, providers, model):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    target = parser.add_mutually_exclusive_group(required=True)
+    target = parser.add_mutually_exclusive_group()
     target.add_argument("--provider", action="append", help="endpoint tag; repeat for a selected subset")
     target.add_argument("--list-providers", action="store_true", help="list eligible endpoints without making paid requests")
     target.add_argument("--all-providers", action="store_true", help="run ten requests against every eligible provider tag")
     target.add_argument("--top", type=int, metavar="N", help="run the N eligible tags with highest recent median throughput")
     parser.add_argument("--model", default=MODEL)
+    parser.add_argument("--env-file", type=Path, help="read OPENROUTER_API_KEY from this file; otherwise use the environment or .env")
     parser.add_argument("--concurrency", type=int, default=5)
     parser.add_argument("--timeout", type=float, default=60)
     parser.add_argument("--retries", type=int, default=3)
-    parser.add_argument("--output", type=Path, default=Path("results.jsonl"))
+    parser.add_argument("--output", type=Path, help="JSONL output path; default is a new timestamped file")
     args = parser.parse_args(argv)
+    if not (args.provider or args.list_providers or args.all_providers or args.top):
+        args.top = 5
     if args.concurrency < 1 or args.timeout <= 0 or not 0 <= args.retries <= 10:
         parser.error("concurrency and timeout must be positive; retries must be 0–10")
     if args.top is not None and args.top < 1:
         parser.error("--top must be positive")
     if args.provider and len(set(args.provider)) != len(args.provider):
         parser.error("provider slugs must be unique")
-    key = os.environ.get("OPENROUTER_API_KEY")
+    try:
+        key = resolve_key(args.env_file)
+    except ValueError as exc:
+        parser.error(str(exc))
     if not key and not args.list_providers:
-        parser.error("set OPENROUTER_API_KEY")
+        parser.error("set OPENROUTER_API_KEY, add it to .env, or pass --env-file")
     try:
         available = discover_providers(args.model, key, args.timeout, args.top)
     except ValueError as exc:
@@ -237,6 +271,8 @@ def main(argv=None):
     missing = [tag for tag in providers if tag not in available]
     if missing:
         parser.error("provider unavailable or missing required parameters: " + ", ".join(missing))
+    if args.output is None:
+        args.output = Path(datetime.now(timezone.utc).strftime("results-%Y%m%dT%H%M%S%fZ.jsonl"))
     if args.output.exists():
         parser.error(f"output already exists: {args.output}")
     jobs = [(provider, record_id) for provider in providers for record_id in IDS]

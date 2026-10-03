@@ -12,6 +12,14 @@ import bench
 
 
 class ExperimentTests(unittest.TestCase):
+    def test_env_file_key_overrides_environment(self):
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "key.env"
+            path.write_text('export OPENROUTER_API_KEY="file-key"\n')
+            with patch.dict(os.environ, {"OPENROUTER_API_KEY": "environment-key"}):
+                self.assertEqual(bench.resolve_key(path), "file-key")
+                self.assertEqual(bench.resolve_key(None), "environment-key")
+
     def test_catalog_filters_and_deduplicates_compatible_targets(self):
         required = sorted(bench.REQUIRED_PARAMETERS)
         catalog = {"data": {"id": "z-ai/glm-5.3-flash", "endpoints": [
@@ -63,6 +71,19 @@ class ExperimentTests(unittest.TestCase):
             self.assertEqual(len(output.read_text().splitlines()), 10)
             self.assertIn("z-ai/glm-5.3-flash", printed.getvalue())
             self.assertIn("100%", printed.getvalue())
+
+    def test_no_target_defaults_to_top_five(self):
+        with TemporaryDirectory() as directory:
+            output = Path(directory) / "results.jsonl"
+            def fake_run(provider, record_id, model, key, timeout, retries, cooldown):
+                return {"provider": provider, "id": record_id, "status": "correct"}
+            with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), \
+                 patch.object(bench, "discover_providers", return_value={"ready/fp8": "Ready"}) as discover, \
+                 patch.object(bench, "run_one", side_effect=fake_run), \
+                 redirect_stdout(StringIO()):
+                self.assertEqual(bench.main(["--output", str(output)]), 0)
+            discover.assert_called_once_with(bench.MODEL, "test-key", 60, 5)
+            self.assertEqual(len(output.read_text().splitlines()), 10)
 
     def test_percent_correct_uses_all_ten_cases(self):
         rows = ([{"provider": "ready/fp8", "status": "correct"}] * 7

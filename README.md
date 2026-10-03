@@ -9,15 +9,30 @@ historical task asks a model to extract `id`, an explicitly empty `nickname`, an
 an absent `middle_name`. Each provider receives ten `Form K111:` through
 `Form K120:` requests. The explicit `Record ID:` control is omitted.
 
-The script uses OpenRouter's chat completions endpoint. It defaults to DeepSeek
-V4.1 Flash; `--model z-ai/glm-5.3-flash` runs the same task on GLM-5.3-Flash.
+The script uses OpenRouter's chat completions endpoint. Running `python bench.py`
+defaults to the five fastest eligible provider tags for DeepSeek V4.1 Flash;
+`--model z-ai/glm-5.3-flash` runs the same task on GLM-5.3-Flash.
 Requests use `reasoning.effort=high`, strict JSON schema, temperature 1, top_p 1,
 and an 8192-token cap. `provider.only` pins each provider tag and disables
 fallbacks.
 
 ## Run
 
-Python 3.10+ is enough; there are no runtime dependencies. Discover eligible
+Python 3.10+ is enough; there are no runtime dependencies. Set
+`OPENROUTER_API_KEY` in the environment, put an `OPENROUTER_API_KEY=...` line in
+the local `.env` file, or pass `--env-file path/to/credentials.env`. An explicit
+`--env-file` takes precedence over the environment; the environment takes
+precedence over the local `.env`. The runner uses only that key from an env
+file and never writes it to the results. The local `.env` is gitignored.
+
+With a key available, the simplest paid run is:
+
+```sh
+python bench.py
+```
+
+Discover eligible provider tags for either model without making completion
+requests:
 provider tags for either model without making completion requests:
 
 ```sh
@@ -27,11 +42,9 @@ python bench.py --model z-ai/glm-5.3-flash --list-providers
 
 The script fetches the live [OpenRouter model endpoint catalog](https://openrouter.ai/docs/api/api-reference/endpoints/list-all-endpoints-for-a-model), keeps status-0 endpoints advertising the reasoning and structured-output parameters used here, and deduplicates provider tags. Catalog eligibility does not guarantee account access or a successful completion. A tag can represent more than one endpoint under the same provider.
 
-To make paid requests, set your key and explicitly select a subset or every
-eligible provider:
+To override the defaults, select a model, subset, or provider count:
 
 ```sh
-export OPENROUTER_API_KEY=...
 python bench.py --model z-ai/glm-5.3-flash --provider deepinfra/fp4 --provider fireworks
 python bench.py --model deepseek/deepseek-v4.1-flash --all-providers
 python bench.py --model deepseek/deepseek-v4.1-flash --top 5
@@ -56,9 +69,10 @@ The table leads with **% correct = correct responses / 10 scheduled requests**
 for each provider tag, and shows `correct/10` beside it. Wrong answers, invalid
 or incomplete outputs, and request errors remain separate columns. An error or
 invalid output contributes zero to `% correct`; inspect those columns before
-interpreting a provider difference. Full request and response records go to
-`results.jsonl` (gitignored) as each request finishes; use `--output` to choose
-another file. Existing output files are never overwritten. A nonzero
+interpreting a provider difference. Full request and response records go to a
+new timestamped `results-*.jsonl` file (gitignored) as each request finishes;
+use `--output` to choose another file. Existing output files are never
+overwritten. A nonzero
 exit code means at least one request failed or produced an incomplete/invalid
 response. This small, deliberately selected template panel is a diagnostic,
 not an independent-task benchmark or a broad provider ranking. Retries can
