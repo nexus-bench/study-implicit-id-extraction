@@ -2,7 +2,8 @@
 
 [DeepSeek V4.1 Flash all-provider results](RESULTS.md),
 [DeepSeek top-five ten-request results](RESULTS-DS-TOP5.md),
-[DeepSeek top-five twenty-request results](RESULTS-DS-TOP5-20.md), and
+[DeepSeek top-five twenty-request results](RESULTS-DS-TOP5-20.md),
+[DeepSeek top-ten twenty-request results](RESULTS-DS-TOP10-20.md), and
 [GLM-5.3-Flash top-five results](RESULTS-GLM.md) from 2026-10-03 include
 provider tables and raw request/response evidence.
 
