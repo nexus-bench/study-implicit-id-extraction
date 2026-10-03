@@ -101,3 +101,7 @@ differences in mind.
 
 The prompts, expected answers, and scoring rule are self-contained in
 `bench.py`. The GLM option extends the original DeepSeek diagnostic.
+
+## License
+
+Apache License 2.0. See [LICENSE](LICENSE).
