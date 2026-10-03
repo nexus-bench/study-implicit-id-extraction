@@ -12,7 +12,7 @@ an absent `middle_name`. Each provider receives ten `Form K111:` through
 The script uses OpenRouter's chat completions endpoint. It defaults to DeepSeek
 V4.1 Flash; `--model z-ai/glm-5.3-flash` runs the same task on GLM-5.3-Flash.
 Requests use `reasoning.effort=high`, strict JSON schema, temperature 1, top_p 1,
-and a 4096-token cap. `provider.only` pins each provider tag and disables
+and an 8192-token cap. `provider.only` pins each provider tag and disables
 fallbacks.
 
 ## Run
@@ -37,10 +37,12 @@ python bench.py --model deepseek/deepseek-v4.1-flash --all-providers
 ```
 
 `--all-providers` makes ten requests for every listed tag, so inspect the list
-first. The default is three requests at once across the whole run. Adjust with
-`--concurrency`; `--retries` controls retries for HTTP 429 and 5xx responses.
-`Retry-After` is honored when supplied. Each logical request is scored once
-after its final attempt.
+first. The default is five requests at once across the whole run, with a
+60-second socket timeout per attempt. Adjust with `--concurrency` and
+`--timeout`; `--retries` controls retries for HTTP 429 and 5xx responses.
+`Retry-After` is honored when supplied. Backoff applies only to the request
+that received the error; other workers continue. Each logical request is
+scored once after its final attempt.
 
 The table leads with **% correct = correct responses / 10 scheduled requests**
 for each provider tag, and shows `correct/10` beside it. Wrong answers, invalid

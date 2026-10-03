@@ -76,7 +76,7 @@ def payload(model, provider, record_id):
         ],
         "temperature": 1,
         "top_p": 1,
-        "max_tokens": 4096,
+        "max_tokens": 8192,
         "reasoning": {"effort": "high"},
         "response_format": {"type": "json_schema", "json_schema": {
             "name": "result", "strict": True, "schema": SCHEMA}},
@@ -169,8 +169,8 @@ def main(argv=None):
     target.add_argument("--list-providers", action="store_true", help="list eligible endpoints without making paid requests")
     target.add_argument("--all-providers", action="store_true", help="run ten requests against every eligible provider tag")
     parser.add_argument("--model", default=MODEL)
-    parser.add_argument("--concurrency", type=int, default=3)
-    parser.add_argument("--timeout", type=float, default=45)
+    parser.add_argument("--concurrency", type=int, default=5)
+    parser.add_argument("--timeout", type=float, default=60)
     parser.add_argument("--retries", type=int, default=3)
     parser.add_argument("--output", type=Path, default=Path("results.jsonl"))
     args = parser.parse_args(argv)
