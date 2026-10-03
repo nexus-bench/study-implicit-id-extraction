@@ -15,7 +15,7 @@ an absent `middle_name`. Each provider receives the ten `Form K111:` through
 `Record ID:` control is omitted.
 
 The script uses OpenRouter's chat completions endpoint. Running `python bench.py`
-defaults to the five fastest eligible provider tags for DeepSeek V4.1 Flash;
+defaults to the ten fastest eligible provider tags for DeepSeek V4.1 Flash;
 `--model z-ai/glm-5.3-flash` runs the same task on GLM-5.3-Flash.
 Requests use `reasoning.effort=high`, strict JSON schema, temperature 1, top_p 1,
 and an 8192-token cap by default. `provider.only` pins each provider tag and disables

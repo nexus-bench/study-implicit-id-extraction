@@ -88,7 +88,7 @@ class ExperimentTests(unittest.TestCase):
             self.assertIn("z-ai/glm-5.3-flash", printed.getvalue())
             self.assertIn("100%", printed.getvalue())
 
-    def test_no_target_defaults_to_top_five(self):
+    def test_no_target_defaults_to_top_ten(self):
         with TemporaryDirectory() as directory:
             output = Path(directory) / "results.jsonl"
             def fake_run(provider, record_id, repeat, model, key, timeout, retries, cooldown, max_tokens):
@@ -98,7 +98,7 @@ class ExperimentTests(unittest.TestCase):
                  patch.object(bench, "run_one", side_effect=fake_run), \
                  redirect_stdout(StringIO()), redirect_stderr(StringIO()) as progress_output:
                 self.assertEqual(bench.main(["--output", str(output)]), 0)
-            discover.assert_called_once_with(bench.MODEL, "test-key", 60, 5)
+            discover.assert_called_once_with(bench.MODEL, "test-key", 60, 10)
             self.assertEqual(len(output.read_text().splitlines()), 20)
             self.assertIn("Completed 20/20 (100%)", progress_output.getvalue())
 

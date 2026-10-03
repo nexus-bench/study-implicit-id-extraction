@@ -264,7 +264,7 @@ def main(argv=None):
     parser.add_argument("--output", type=Path, help="JSONL output path; default is a new timestamped file")
     args = parser.parse_args(argv)
     if not (args.provider or args.list_providers or args.all_providers or args.top):
-        args.top = 5
+        args.top = 10
     if (args.concurrency < 1 or args.timeout <= 0 or args.max_tokens < 1
             or not 0 <= args.retries <= 10
             or (args.repeats is not None and args.repeats < 1)
