@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import random
 import sys
+from threading import Lock
 import time
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
@@ -98,9 +99,31 @@ def retry_delay(value, attempt):
     return min(2 ** attempt + random.random(), 30)
 
 
-def request(body, key, timeout, retries):
+class RateLimitCooldown:
+    """Share the latest 429 retry deadline across all request workers."""
+
+    def __init__(self):
+        self.lock = Lock()
+        self.deadline = 0.0
+
+    def wait(self):
+        while True:
+            with self.lock:
+                remaining = self.deadline - time.monotonic()
+            if remaining <= 0:
+                return
+            time.sleep(remaining)
+
+    def defer(self, delay):
+        with self.lock:
+            self.deadline = max(self.deadline, time.monotonic() + delay)
+
+
+def request(body, key, timeout, retries, cooldown=None):
     data = json.dumps(body).encode()
     for attempt in range(retries + 1):
+        if cooldown is not None:
+            cooldown.wait()
         req = Request(URL, data=data, headers={
             "Authorization": f"Bearer {key}",
             "Content-Type": "application/json",
@@ -110,7 +133,15 @@ def request(body, key, timeout, retries):
             with urlopen(req, timeout=timeout) as response:
                 return json.load(response), attempt + 1, None
         except HTTPError as exc:
-            if (exc.code == 429 or 500 <= exc.code <= 599) and attempt < retries:
+            if exc.code == 429:
+                delay = retry_delay(exc.headers.get("Retry-After"), attempt)
+                if cooldown is not None:
+                    cooldown.defer(delay)
+                if attempt < retries:
+                    if cooldown is None:
+                        time.sleep(delay)
+                    continue
+            elif 500 <= exc.code <= 599 and attempt < retries:
                 time.sleep(retry_delay(exc.headers.get("Retry-After"), attempt))
                 continue
             return None, attempt + 1, f"HTTP {exc.code}"
@@ -136,9 +167,9 @@ def score(response, record_id):
     return "correct" if answer == {"id": record_id, "nickname": "", "middle_name": None} else "wrong"
 
 
-def run_one(provider, record_id, model, key, timeout, retries):
+def run_one(provider, record_id, model, key, timeout, retries, cooldown):
     body = payload(model, provider, record_id)
-    response, attempts, error = request(body, key, timeout, retries)
+    response, attempts, error = request(body, key, timeout, retries, cooldown)
     return {
         "completed_at_utc": datetime.now(timezone.utc).isoformat(),
         "provider": provider, "id": record_id,
@@ -200,9 +231,10 @@ def main(argv=None):
         parser.error(f"output already exists: {args.output}")
     jobs = [(provider, record_id) for provider in providers for record_id in IDS]
     rows = []
+    cooldown = RateLimitCooldown()
     with args.output.open("x", encoding="utf-8") as stream:
         with ThreadPoolExecutor(max_workers=args.concurrency) as pool:
-            futures = [pool.submit(run_one, *job, args.model, key, args.timeout, args.retries)
+            futures = [pool.submit(run_one, *job, args.model, key, args.timeout, args.retries, cooldown)
                        for job in jobs]
             for future in as_completed(futures):
                 row = future.result()

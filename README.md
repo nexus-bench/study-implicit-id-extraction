@@ -40,9 +40,10 @@ python bench.py --model deepseek/deepseek-v4.1-flash --all-providers
 first. The default is five requests at once across the whole run, with a
 60-second socket timeout per attempt. Adjust with `--concurrency` and
 `--timeout`; `--retries` controls retries for HTTP 429 and 5xx responses.
-`Retry-After` is honored when supplied. Backoff applies only to the request
-that received the error; other workers continue. Each logical request is
-scored once after its final attempt.
+`Retry-After` is honored when supplied. A 429 starts a shared cooldown: all
+workers wait before their next attempt, including queued requests. Requests
+already in flight may finish. A 5xx backs off only its own request. Each
+logical request is scored once after its final attempt.
 
 The table leads with **% correct = correct responses / 10 scheduled requests**
 for each provider tag, and shows `correct/10` beside it. Wrong answers, invalid

@@ -38,7 +38,7 @@ class ExperimentTests(unittest.TestCase):
     def test_all_providers_runs_ten_each(self):
         with TemporaryDirectory() as directory:
             output = Path(directory) / "results.jsonl"
-            def fake_run(provider, record_id, model, key, timeout, retries):
+            def fake_run(provider, record_id, model, key, timeout, retries, cooldown):
                 return {"provider": provider, "id": record_id, "status": "correct"}
             with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), \
                  patch.object(bench, "discover_providers", return_value={"ready/fp8": "Ready"}), \
@@ -97,6 +97,25 @@ class ExperimentTests(unittest.TestCase):
             response, attempts, error = bench.request({}, "test-key", 5, 3)
         self.assertEqual((response, attempts, error), (None, 1, "HTTP 400"))
         self.assertEqual(send.call_count, 1)
+
+    def test_429_delays_other_requests_even_without_retries(self):
+        clock = [100.0]
+        sleeps = []
+
+        def sleep(seconds):
+            sleeps.append(seconds)
+            clock[0] += seconds
+
+        first = HTTPError(bench.URL, 429, "rate limited", {"Retry-After": "2"}, BytesIO(b""))
+        second = BytesIO(b'{"choices": []}')
+        cooldown = bench.RateLimitCooldown()
+        with patch.object(bench, "urlopen", side_effect=[first, second]) as send, \
+             patch.object(bench.time, "monotonic", side_effect=lambda: clock[0]), \
+             patch.object(bench.time, "sleep", side_effect=sleep):
+            self.assertEqual(bench.request({}, "test-key", 5, 0, cooldown)[2], "HTTP 429")
+            self.assertEqual(bench.request({}, "test-key", 5, 0, cooldown)[2], None)
+        self.assertEqual(send.call_count, 2)
+        self.assertEqual(sleeps, [2])
 
 
 if __name__ == "__main__":
