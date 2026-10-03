@@ -147,16 +147,19 @@ def run_one(provider, record_id, model, key, timeout, retries):
     }
 
 
-def table(rows, providers):
-    print("Provider                         correct  wrong  invalid  errors")
-    print("-" * 66)
+def table(rows, providers, model):
+    print(f"Model: {model}")
+    print("Provider                         % correct  correct  wrong  invalid  errors")
+    print("-" * 76)
     for provider in providers:
         subset = [r for r in rows if r["provider"] == provider]
         correct = sum(r["status"] == "correct" for r in subset)
         wrong = sum(r["status"] == "wrong" for r in subset)
         invalid = sum(r["status"] in ("invalid", "incomplete") for r in subset)
         errors = sum(r["status"] == "error" for r in subset)
-        print(f"{provider[:32]:32} {correct:>2}/10    {wrong:>2}      {invalid:>2}       {errors:>2}")
+        percent = 100 * correct // len(IDS)
+        print(f"{provider[:32]:32} {percent:>3}%       {correct:>2}/10      {wrong:>2}       {invalid:>2}       {errors:>2}")
+    print("% correct = correct / 10 scheduled requests; errors and invalid outputs are not correct.")
 
 
 def main(argv=None):
@@ -207,7 +210,7 @@ def main(argv=None):
                 stream.write(json.dumps(row, ensure_ascii=False) + "\n")
                 stream.flush()
     rows.sort(key=lambda r: (providers.index(r["provider"]), IDS.index(r["id"])))
-    table(rows, providers)
+    table(rows, providers, args.model)
     print(f"Details: {args.output}")
     return int(any(r["status"] in ("error", "invalid", "incomplete") for r in rows))
 

@@ -43,11 +43,22 @@ class ExperimentTests(unittest.TestCase):
             with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), \
                  patch.object(bench, "discover_providers", return_value={"ready/fp8": "Ready"}), \
                  patch.object(bench, "run_one", side_effect=fake_run) as run, \
-                 redirect_stdout(StringIO()):
+                 redirect_stdout(StringIO()) as printed:
                 code = bench.main(["--model", "z-ai/glm-5.3-flash", "--all-providers", "--output", str(output)])
             self.assertEqual(code, 0)
             self.assertEqual(run.call_count, 10)
             self.assertEqual(len(output.read_text().splitlines()), 10)
+            self.assertIn("z-ai/glm-5.3-flash", printed.getvalue())
+            self.assertIn("100%", printed.getvalue())
+
+    def test_percent_correct_uses_all_ten_cases(self):
+        rows = ([{"provider": "ready/fp8", "status": "correct"}] * 7
+                + [{"provider": "ready/fp8", "status": status}
+                   for status in ("wrong", "invalid", "error")])
+        with redirect_stdout(StringIO()) as output:
+            bench.table(rows, ["ready/fp8"], "example/model")
+        self.assertIn("70%", output.getvalue())
+        self.assertIn("7/10", output.getvalue())
 
     def test_ten_implicit_requests(self):
         self.assertEqual(len(bench.IDS), 10)

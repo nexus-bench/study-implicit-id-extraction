@@ -39,8 +39,11 @@ first. The default is three requests at once across the whole run. Adjust with
 `Retry-After` is honored when supplied. Each logical request is scored once
 after its final attempt.
 
-The table reports exact JSON correctness for the ten fuzzy ID cases, plus
-wrong answers and transport/format failures. Full request and response records go to
+The table leads with **% correct = correct responses / 10 scheduled requests**
+for each provider tag, and shows `correct/10` beside it. Wrong answers, invalid
+or incomplete outputs, and request errors remain separate columns. An error or
+invalid output contributes zero to `% correct`; inspect those columns before
+interpreting a provider difference. Full request and response records go to
 `results.jsonl` (gitignored) as each request finishes; use `--output` to choose
 another file. Existing output files are never overwritten. A nonzero
 exit code means at least one request failed or produced an incomplete/invalid
