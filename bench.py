@@ -1,6 +1,7 @@
 """Repeat ten implicit record-ID extraction cases per pinned OpenRouter provider."""
 
 import argparse
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
@@ -233,6 +234,17 @@ def table(rows, providers, model, requests_per_provider):
     print(f"% correct = correct / {requests_per_provider} scheduled requests; errors and invalid outputs are not correct.")
 
 
+def progress(done, total, counts):
+    message = (f"Completed {done}/{total} ({100 * done // total}%) | "
+               f"correct {counts['correct']} | wrong {counts['wrong']} | "
+               f"invalid/incomplete {counts['invalid'] + counts['incomplete']} | "
+               f"errors {counts['error']}")
+    if sys.stderr.isatty():
+        print("\r" + message, end="\n" if done == total else "", file=sys.stderr, flush=True)
+    elif done == 0 or done == total or done * 10 // total > (done - 1) * 10 // total:
+        print(message, file=sys.stderr, flush=True)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     target = parser.add_mutually_exclusive_group()
@@ -292,6 +304,9 @@ def main(argv=None):
     jobs = [(provider, IDS[index % len(IDS)], index // len(IDS) + 1)
             for provider in providers for index in range(num_requests)]
     rows = []
+    counts = Counter()
+    print(f"Running {args.model}: {len(providers)} providers, {num_requests} requests each", file=sys.stderr)
+    progress(0, len(jobs), counts)
     cooldown = RateLimitCooldown()
     with args.output.open("x", encoding="utf-8") as stream:
         with ThreadPoolExecutor(max_workers=args.concurrency) as pool:
@@ -303,6 +318,8 @@ def main(argv=None):
                 rows.append(row)
                 stream.write(json.dumps(row, ensure_ascii=False) + "\n")
                 stream.flush()
+                counts[row["status"]] += 1
+                progress(len(rows), len(jobs), counts)
     rows.sort(key=lambda r: (providers.index(r["provider"]), r["repeat"], IDS.index(r["id"])))
     table(rows, providers, args.model, num_requests)
     print(f"Details: {args.output}")

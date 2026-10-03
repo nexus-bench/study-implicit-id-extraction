@@ -80,7 +80,9 @@ for each provider tag, and shows the count beside it (`correct/20` by default).
 Wrong answers, invalid or incomplete outputs, and request errors remain
 separate columns. An error or
 invalid output contributes zero to `% correct`; inspect those columns before
-interpreting a provider difference. Full request and response records go to a
+interpreting a provider difference. While requests run, stderr shows completed
+requests and outcome counts. It updates in place in a terminal and prints
+occasional lines when redirected to a log. Full request and response records go to a
 new timestamped `results-*.jsonl` file (gitignored) as each request finishes;
 use `--output` to choose another file. Existing output files are never
 overwritten. A nonzero

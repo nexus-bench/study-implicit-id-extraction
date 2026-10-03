@@ -1,6 +1,7 @@
 import json
+from collections import Counter
 from io import BytesIO, StringIO
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -12,6 +13,19 @@ import bench
 
 
 class ExperimentTests(unittest.TestCase):
+    def test_terminal_progress_updates_one_line(self):
+        class Terminal(StringIO):
+            def isatty(self):
+                return True
+
+        output = Terminal()
+        with redirect_stderr(output):
+            bench.progress(0, 2, Counter())
+            bench.progress(1, 2, Counter(correct=1))
+            bench.progress(2, 2, Counter(correct=2))
+        self.assertEqual(output.getvalue().count("\rCompleted"), 3)
+        self.assertTrue(output.getvalue().endswith("\n"))
+
     def test_env_file_key_overrides_environment(self):
         with TemporaryDirectory() as directory:
             path = Path(directory) / "key.env"
@@ -64,7 +78,7 @@ class ExperimentTests(unittest.TestCase):
             with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), \
                  patch.object(bench, "discover_providers", return_value={"ready/fp8": "Ready"}), \
                  patch.object(bench, "run_one", side_effect=fake_run) as run, \
-                 redirect_stdout(StringIO()) as printed:
+                 redirect_stdout(StringIO()) as printed, redirect_stderr(StringIO()):
                 code = bench.main(["--model", "z-ai/glm-5.3-flash", "--all-providers", "--output", str(output)])
             self.assertEqual(code, 0)
             self.assertEqual(run.call_count, 20)
@@ -82,10 +96,11 @@ class ExperimentTests(unittest.TestCase):
             with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), \
                  patch.object(bench, "discover_providers", return_value={"ready/fp8": "Ready"}) as discover, \
                  patch.object(bench, "run_one", side_effect=fake_run), \
-                 redirect_stdout(StringIO()):
+                 redirect_stdout(StringIO()), redirect_stderr(StringIO()) as progress_output:
                 self.assertEqual(bench.main(["--output", str(output)]), 0)
             discover.assert_called_once_with(bench.MODEL, "test-key", 60, 5)
             self.assertEqual(len(output.read_text().splitlines()), 20)
+            self.assertIn("Completed 20/20 (100%)", progress_output.getvalue())
 
     def test_repeats_one_runs_each_case_once(self):
         with TemporaryDirectory() as directory:
@@ -95,7 +110,7 @@ class ExperimentTests(unittest.TestCase):
             with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), \
                  patch.object(bench, "discover_providers", return_value={"ready/fp8": "Ready"}), \
                  patch.object(bench, "run_one", side_effect=fake_run), \
-                 redirect_stdout(StringIO()) as printed:
+                 redirect_stdout(StringIO()) as printed, redirect_stderr(StringIO()):
                 self.assertEqual(bench.main(["--repeats", "1", "--output", str(output)]), 0)
             self.assertEqual(len(output.read_text().splitlines()), 10)
             self.assertIn("10/10", printed.getvalue())
@@ -118,7 +133,7 @@ class ExperimentTests(unittest.TestCase):
             with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), \
                  patch.object(bench, "discover_providers", return_value={"ready/fp8": "Ready"}), \
                  patch.object(bench, "run_one", side_effect=fake_run), \
-                 redirect_stdout(StringIO()) as printed:
+                 redirect_stdout(StringIO()) as printed, redirect_stderr(StringIO()):
                 self.assertEqual(bench.main(["--num-requests", "15", "--max-tokens", "4096",
                                              "--output", str(output)]), 0)
             rows = [json.loads(line) for line in output.read_text().splitlines()]
