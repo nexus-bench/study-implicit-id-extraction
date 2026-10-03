@@ -26,7 +26,7 @@ default. Each request uses the same system instruction, a three-field JSON
 schema, and one OpenRouter model slug. It pins one provider tag with fallback
 disabled. **% correct = exact expected JSON responses / scheduled requests**
 for that provider. Wrong answers, invalid or incomplete outputs, and request
-errors all count as not correct and are shown separately. This mirror keeps
+errors all count as not correct and are shown separately. This study keeps
 only the implicit-ID condition from the original `llm-provider-bench`
 experiment; its explicit `Record ID:` control is omitted.
 

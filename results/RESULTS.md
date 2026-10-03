@@ -52,5 +52,5 @@ also had an incorrect `nickname`. The absent `middle_name` was correct in all
 The provider tag and OpenRouter routing metadata identify the reported serving
 provider, not the underlying weights, quantization, or engine. A provider tag
 may represent more than one endpoint. No repeats or explicit-wording control
-were run in this mirror, and one case changes a provider's score by ten
+were run in this study, and one case changes a provider's score by ten
 percentage points.

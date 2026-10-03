@@ -1,5 +1,5 @@
 [project]
-name = "vague-match-mirror"
+name = "study-implicit-id-extraction"
 version = "0.1.0"
 description = "Small OpenRouter reproduction of an implicit record-ID extraction diagnostic"
 readme = "README.md"
