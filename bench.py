@@ -105,7 +105,7 @@ def resolve_key(env_file):
     return key_from_env_file(local) if local.is_file() else None
 
 
-def payload(model, provider, record_id, max_tokens=8192):
+def payload(model, provider, record_id, max_tokens=8192, temperature=1):
     return {
         "model": model,
         "messages": [
@@ -113,7 +113,7 @@ def payload(model, provider, record_id, max_tokens=8192):
             {"role": "user", "content": f'Form {record_id}: nickname was explicitly set to the empty string "". '
              "No middle_name was provided. Extract id, nickname, middle_name."},
         ],
-        "temperature": 1,
+        "temperature": temperature,
         "top_p": 1,
         "max_tokens": max_tokens,
         "reasoning": {"effort": "high"},
@@ -208,8 +208,8 @@ def score(response, record_id):
     return "correct" if answer == {"id": record_id, "nickname": "", "middle_name": None} else "wrong"
 
 
-def run_one(provider, record_id, repeat, model, key, timeout, retries, cooldown, max_tokens):
-    body = payload(model, provider, record_id, max_tokens)
+def run_one(provider, record_id, repeat, model, key, timeout, retries, cooldown, max_tokens, temperature):
+    body = payload(model, provider, record_id, max_tokens, temperature)
     response, attempts, error = request(body, key, timeout, retries, cooldown)
     return {
         "completed_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -258,6 +258,7 @@ def main(argv=None):
     parser.add_argument("--timeout", type=float, default=60, help="socket timeout in seconds per attempt (default: 60)")
     parser.add_argument("--retries", type=int, default=3, help="retries after 429 or 5xx (default: 3)")
     parser.add_argument("--max-tokens", type=int, default=8192, help="output token cap per request (default: 8192)")
+    parser.add_argument("--temperature", type=float, default=1, help="sampling temperature from 0 to 2 (default: 1)")
     volume = parser.add_mutually_exclusive_group()
     volume.add_argument("--num-requests", type=int, metavar="N", help="requests per provider (default: 20)")
     volume.add_argument("--repeats", type=int, help="full passes over the ten fuzzy cases; 1 gives ten requests")
@@ -266,10 +267,11 @@ def main(argv=None):
     if not (args.provider or args.list_providers or args.all_providers or args.top):
         args.top = 10
     if (args.concurrency < 1 or args.timeout <= 0 or args.max_tokens < 1
+            or not 0 <= args.temperature <= 2
             or not 0 <= args.retries <= 10
             or (args.repeats is not None and args.repeats < 1)
             or (args.num_requests is not None and args.num_requests < 1)):
-        parser.error("concurrency, timeout, max-tokens, and request count must be positive; retries must be 0–10")
+        parser.error("concurrency, timeout, max-tokens, and request count must be positive; temperature must be 0–2; retries must be 0–10")
     num_requests = (args.num_requests if args.num_requests is not None else
                     len(IDS) * (args.repeats if args.repeats is not None else 2))
     if args.top is not None and args.top < 1:
@@ -311,7 +313,7 @@ def main(argv=None):
     with args.output.open("x", encoding="utf-8") as stream:
         with ThreadPoolExecutor(max_workers=args.concurrency) as pool:
             futures = [pool.submit(run_one, *job, args.model, key, args.timeout, args.retries,
-                                   cooldown, args.max_tokens)
+                                   cooldown, args.max_tokens, args.temperature)
                        for job in jobs]
             for future in as_completed(futures):
                 row = future.result()

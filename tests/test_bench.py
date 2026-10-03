@@ -73,7 +73,7 @@ class ExperimentTests(unittest.TestCase):
     def test_all_providers_runs_twenty_each(self):
         with TemporaryDirectory() as directory:
             output = Path(directory) / "results.jsonl"
-            def fake_run(provider, record_id, repeat, model, key, timeout, retries, cooldown, max_tokens):
+            def fake_run(provider, record_id, repeat, model, key, timeout, retries, cooldown, max_tokens, temperature):
                 return {"provider": provider, "id": record_id, "repeat": repeat, "status": "correct"}
             with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), \
                  patch.object(bench, "discover_providers", return_value={"ready/fp8": "Ready"}), \
@@ -91,7 +91,7 @@ class ExperimentTests(unittest.TestCase):
     def test_no_target_defaults_to_top_ten(self):
         with TemporaryDirectory() as directory:
             output = Path(directory) / "results.jsonl"
-            def fake_run(provider, record_id, repeat, model, key, timeout, retries, cooldown, max_tokens):
+            def fake_run(provider, record_id, repeat, model, key, timeout, retries, cooldown, max_tokens, temperature):
                 return {"provider": provider, "id": record_id, "repeat": repeat, "status": "correct"}
             with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), \
                  patch.object(bench, "discover_providers", return_value={"ready/fp8": "Ready"}) as discover, \
@@ -105,7 +105,7 @@ class ExperimentTests(unittest.TestCase):
     def test_repeats_one_runs_each_case_once(self):
         with TemporaryDirectory() as directory:
             output = Path(directory) / "results.jsonl"
-            def fake_run(provider, record_id, repeat, model, key, timeout, retries, cooldown, max_tokens):
+            def fake_run(provider, record_id, repeat, model, key, timeout, retries, cooldown, max_tokens, temperature):
                 return {"provider": provider, "id": record_id, "repeat": repeat, "status": "correct"}
             with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), \
                  patch.object(bench, "discover_providers", return_value={"ready/fp8": "Ready"}), \
@@ -127,14 +127,15 @@ class ExperimentTests(unittest.TestCase):
     def test_num_requests_can_stop_partway_through_second_pass(self):
         with TemporaryDirectory() as directory:
             output = Path(directory) / "results.jsonl"
-            def fake_run(provider, record_id, repeat, model, key, timeout, retries, cooldown, max_tokens):
+            def fake_run(provider, record_id, repeat, model, key, timeout, retries, cooldown, max_tokens, temperature):
                 self.assertEqual(max_tokens, 4096)
+                self.assertEqual(temperature, 0)
                 return {"provider": provider, "id": record_id, "repeat": repeat, "status": "correct"}
             with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), \
                  patch.object(bench, "discover_providers", return_value={"ready/fp8": "Ready"}), \
                  patch.object(bench, "run_one", side_effect=fake_run), \
                  redirect_stdout(StringIO()) as printed, redirect_stderr(StringIO()):
-                self.assertEqual(bench.main(["--num-requests", "15", "--max-tokens", "4096",
+                self.assertEqual(bench.main(["--num-requests", "15", "--max-tokens", "4096", "--temperature", "0",
                                              "--output", str(output)]), 0)
             rows = [json.loads(line) for line in output.read_text().splitlines()]
             self.assertEqual(len(rows), 15)
@@ -148,6 +149,7 @@ class ExperimentTests(unittest.TestCase):
             self.assertIn(f"Form {record_id}:", body["messages"][1]["content"])
             self.assertEqual(body["provider"]["only"], ["example"])
             self.assertEqual(bench.payload(bench.MODEL, "example", record_id, 4096)["max_tokens"], 4096)
+            self.assertEqual(bench.payload(bench.MODEL, "example", record_id, temperature=0)["temperature"], 0)
 
     def test_exact_gold_and_incomplete_are_distinct(self):
         response = {"choices": [{"finish_reason": "stop", "message": {"content": json.dumps({

@@ -3,7 +3,8 @@
 [DeepSeek V4.1 Flash all-provider results](RESULTS.md),
 [DeepSeek top-five ten-request results](RESULTS-DS-TOP5.md),
 [DeepSeek top-five twenty-request results](RESULTS-DS-TOP5-20.md),
-[DeepSeek top-ten twenty-request results](RESULTS-DS-TOP10-20.md), and
+[DeepSeek top-ten twenty-request results](RESULTS-DS-TOP10-20.md),
+[DeepSeek temperature-zero comparison](RESULTS-DS-TOP10-20-TEMPERATURE0.md), and
 [GLM-5.3-Flash top-five results](RESULTS-GLM.md) from 2026-10-03 include
 provider tables and raw request/response evidence.
 
@@ -55,6 +56,7 @@ python bench.py --model deepseek/deepseek-v4.1-flash --top 5
 python bench.py --model z-ai/glm-5.3-flash --top 10
 python bench.py --repeats 1  # ten requests per provider
 python bench.py --num-requests 15 --max-tokens 4096 --concurrency 3 --timeout 90 --retries 5
+python bench.py --temperature 0
 ```
 
 `--top N` selects the N eligible provider tags with the highest p50 throughput
@@ -68,7 +70,8 @@ socket timeout per attempt. `--num-requests N` sets the exact number of
 scheduled requests **per provider**; the ten fuzzy cases cycle in order, so
 15 means one full pass plus K111–K115 again. `--repeats N` instead sets the
 number of full ten-case passes; these two flags are mutually exclusive.
-`--max-tokens` changes the output cap. `--concurrency`, `--timeout`, and
+`--max-tokens` changes the output cap; `--temperature` accepts 0–2.
+`--concurrency`, `--timeout`, and
 `--retries` control parallel calls, socket timeout per attempt, and retries
 for HTTP 429 and 5xx responses, respectively.
 `Retry-After` is honored when supplied. A 429 starts a shared cooldown: all
