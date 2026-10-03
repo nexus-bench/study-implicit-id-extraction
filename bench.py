@@ -104,7 +104,7 @@ def resolve_key(env_file):
     return key_from_env_file(local) if local.is_file() else None
 
 
-def payload(model, provider, record_id):
+def payload(model, provider, record_id, max_tokens=8192):
     return {
         "model": model,
         "messages": [
@@ -114,7 +114,7 @@ def payload(model, provider, record_id):
         ],
         "temperature": 1,
         "top_p": 1,
-        "max_tokens": 8192,
+        "max_tokens": max_tokens,
         "reasoning": {"effort": "high"},
         "response_format": {"type": "json_schema", "json_schema": {
             "name": "result", "strict": True, "schema": SCHEMA}},
@@ -207,8 +207,8 @@ def score(response, record_id):
     return "correct" if answer == {"id": record_id, "nickname": "", "middle_name": None} else "wrong"
 
 
-def run_one(provider, record_id, repeat, model, key, timeout, retries, cooldown):
-    body = payload(model, provider, record_id)
+def run_one(provider, record_id, repeat, model, key, timeout, retries, cooldown, max_tokens):
+    body = payload(model, provider, record_id, max_tokens)
     response, attempts, error = request(body, key, timeout, retries, cooldown)
     return {
         "completed_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -240,18 +240,26 @@ def main(argv=None):
     target.add_argument("--list-providers", action="store_true", help="list eligible endpoints without making paid requests")
     target.add_argument("--all-providers", action="store_true", help="run all cases against every eligible provider tag")
     target.add_argument("--top", type=int, metavar="N", help="run the N eligible tags with highest recent median throughput")
-    parser.add_argument("--model", default=MODEL)
+    parser.add_argument("--model", default=MODEL, help=f"OpenRouter model ID (default: {MODEL})")
     parser.add_argument("--env-file", type=Path, help="read OPENROUTER_API_KEY from this file; otherwise use the environment or .env")
-    parser.add_argument("--concurrency", type=int, default=5)
-    parser.add_argument("--timeout", type=float, default=60)
-    parser.add_argument("--retries", type=int, default=3)
-    parser.add_argument("--repeats", type=int, default=2, help="runs per fuzzy case and provider (default: 2, or 20 requests per provider)")
+    parser.add_argument("--concurrency", type=int, default=5, help="maximum requests in flight (default: 5)")
+    parser.add_argument("--timeout", type=float, default=60, help="socket timeout in seconds per attempt (default: 60)")
+    parser.add_argument("--retries", type=int, default=3, help="retries after 429 or 5xx (default: 3)")
+    parser.add_argument("--max-tokens", type=int, default=8192, help="output token cap per request (default: 8192)")
+    volume = parser.add_mutually_exclusive_group()
+    volume.add_argument("--num-requests", type=int, metavar="N", help="requests per provider (default: 20)")
+    volume.add_argument("--repeats", type=int, help="full passes over the ten fuzzy cases; 1 gives ten requests")
     parser.add_argument("--output", type=Path, help="JSONL output path; default is a new timestamped file")
     args = parser.parse_args(argv)
     if not (args.provider or args.list_providers or args.all_providers or args.top):
         args.top = 5
-    if args.concurrency < 1 or args.timeout <= 0 or not 0 <= args.retries <= 10 or args.repeats < 1:
-        parser.error("concurrency, timeout, and repeats must be positive; retries must be 0–10")
+    if (args.concurrency < 1 or args.timeout <= 0 or args.max_tokens < 1
+            or not 0 <= args.retries <= 10
+            or (args.repeats is not None and args.repeats < 1)
+            or (args.num_requests is not None and args.num_requests < 1)):
+        parser.error("concurrency, timeout, max-tokens, and request count must be positive; retries must be 0–10")
+    num_requests = (args.num_requests if args.num_requests is not None else
+                    len(IDS) * (args.repeats if args.repeats is not None else 2))
     if args.top is not None and args.top < 1:
         parser.error("--top must be positive")
     if args.provider and len(set(args.provider)) != len(args.provider):
@@ -281,13 +289,14 @@ def main(argv=None):
         args.output = Path(datetime.now(timezone.utc).strftime("results-%Y%m%dT%H%M%S%fZ.jsonl"))
     if args.output.exists():
         parser.error(f"output already exists: {args.output}")
-    jobs = [(provider, record_id, repeat)
-            for provider in providers for repeat in range(1, args.repeats + 1) for record_id in IDS]
+    jobs = [(provider, IDS[index % len(IDS)], index // len(IDS) + 1)
+            for provider in providers for index in range(num_requests)]
     rows = []
     cooldown = RateLimitCooldown()
     with args.output.open("x", encoding="utf-8") as stream:
         with ThreadPoolExecutor(max_workers=args.concurrency) as pool:
-            futures = [pool.submit(run_one, *job, args.model, key, args.timeout, args.retries, cooldown)
+            futures = [pool.submit(run_one, *job, args.model, key, args.timeout, args.retries,
+                                   cooldown, args.max_tokens)
                        for job in jobs]
             for future in as_completed(futures):
                 row = future.result()
@@ -295,7 +304,7 @@ def main(argv=None):
                 stream.write(json.dumps(row, ensure_ascii=False) + "\n")
                 stream.flush()
     rows.sort(key=lambda r: (providers.index(r["provider"]), r["repeat"], IDS.index(r["id"])))
-    table(rows, providers, args.model, len(IDS) * args.repeats)
+    table(rows, providers, args.model, num_requests)
     print(f"Details: {args.output}")
     return int(any(r["status"] in ("error", "invalid", "incomplete") for r in rows))
 

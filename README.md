@@ -16,7 +16,7 @@ The script uses OpenRouter's chat completions endpoint. Running `python bench.py
 defaults to the five fastest eligible provider tags for DeepSeek V4.1 Flash;
 `--model z-ai/glm-5.3-flash` runs the same task on GLM-5.3-Flash.
 Requests use `reasoning.effort=high`, strict JSON schema, temperature 1, top_p 1,
-and an 8192-token cap. `provider.only` pins each provider tag and disables
+and an 8192-token cap by default. `provider.only` pins each provider tag and disables
 fallbacks.
 
 ## Run
@@ -52,6 +52,7 @@ python bench.py --model deepseek/deepseek-v4.1-flash --all-providers
 python bench.py --model deepseek/deepseek-v4.1-flash --top 5
 python bench.py --model z-ai/glm-5.3-flash --top 10
 python bench.py --repeats 1  # ten requests per provider
+python bench.py --num-requests 15 --max-tokens 4096 --concurrency 3 --timeout 90 --retries 5
 ```
 
 `--top N` selects the N eligible provider tags with the highest p50 throughput
@@ -61,18 +62,22 @@ with one tag use the highest reported throughput. This selects for speed, not
 correctness, and the selected set can change between runs. `--all-providers`
 makes 20 requests for every listed tag by default, so inspect the list first.
 The default is five requests at once across the whole run, with a 60-second
-socket timeout per attempt. Adjust with `--concurrency` and `--timeout`;
-`--repeats` changes the number of runs per fuzzy case, while `--retries`
-controls retries for HTTP 429 and 5xx responses.
+socket timeout per attempt. `--num-requests N` sets the exact number of
+scheduled requests **per provider**; the ten fuzzy cases cycle in order, so
+15 means one full pass plus K111–K115 again. `--repeats N` instead sets the
+number of full ten-case passes; these two flags are mutually exclusive.
+`--max-tokens` changes the output cap. `--concurrency`, `--timeout`, and
+`--retries` control parallel calls, socket timeout per attempt, and retries
+for HTTP 429 and 5xx responses, respectively.
 `Retry-After` is honored when supplied. A 429 starts a shared cooldown: all
 workers wait before their next attempt, including queued requests. Requests
 already in flight may finish. A 5xx backs off only its own request. Each
 logical request is scored once after its final attempt.
 
-The table leads with **% correct = correct responses / 20 scheduled requests**
-for each provider tag by default, and shows `correct/20` beside it. Wrong
-answers, invalid
-or incomplete outputs, and request errors remain separate columns. An error or
+The table leads with **% correct = correct responses / scheduled requests**
+for each provider tag, and shows the count beside it (`correct/20` by default).
+Wrong answers, invalid or incomplete outputs, and request errors remain
+separate columns. An error or
 invalid output contributes zero to `% correct`; inspect those columns before
 interpreting a provider difference. Full request and response records go to a
 new timestamped `results-*.jsonl` file (gitignored) as each request finishes;

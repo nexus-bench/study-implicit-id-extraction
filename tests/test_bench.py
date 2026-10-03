@@ -59,7 +59,7 @@ class ExperimentTests(unittest.TestCase):
     def test_all_providers_runs_twenty_each(self):
         with TemporaryDirectory() as directory:
             output = Path(directory) / "results.jsonl"
-            def fake_run(provider, record_id, repeat, model, key, timeout, retries, cooldown):
+            def fake_run(provider, record_id, repeat, model, key, timeout, retries, cooldown, max_tokens):
                 return {"provider": provider, "id": record_id, "repeat": repeat, "status": "correct"}
             with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), \
                  patch.object(bench, "discover_providers", return_value={"ready/fp8": "Ready"}), \
@@ -77,7 +77,7 @@ class ExperimentTests(unittest.TestCase):
     def test_no_target_defaults_to_top_five(self):
         with TemporaryDirectory() as directory:
             output = Path(directory) / "results.jsonl"
-            def fake_run(provider, record_id, repeat, model, key, timeout, retries, cooldown):
+            def fake_run(provider, record_id, repeat, model, key, timeout, retries, cooldown, max_tokens):
                 return {"provider": provider, "id": record_id, "repeat": repeat, "status": "correct"}
             with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), \
                  patch.object(bench, "discover_providers", return_value={"ready/fp8": "Ready"}) as discover, \
@@ -90,7 +90,7 @@ class ExperimentTests(unittest.TestCase):
     def test_repeats_one_runs_each_case_once(self):
         with TemporaryDirectory() as directory:
             output = Path(directory) / "results.jsonl"
-            def fake_run(provider, record_id, repeat, model, key, timeout, retries, cooldown):
+            def fake_run(provider, record_id, repeat, model, key, timeout, retries, cooldown, max_tokens):
                 return {"provider": provider, "id": record_id, "repeat": repeat, "status": "correct"}
             with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), \
                  patch.object(bench, "discover_providers", return_value={"ready/fp8": "Ready"}), \
@@ -109,12 +109,30 @@ class ExperimentTests(unittest.TestCase):
         self.assertIn("70%", output.getvalue())
         self.assertIn("14/20", output.getvalue())
 
+    def test_num_requests_can_stop_partway_through_second_pass(self):
+        with TemporaryDirectory() as directory:
+            output = Path(directory) / "results.jsonl"
+            def fake_run(provider, record_id, repeat, model, key, timeout, retries, cooldown, max_tokens):
+                self.assertEqual(max_tokens, 4096)
+                return {"provider": provider, "id": record_id, "repeat": repeat, "status": "correct"}
+            with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), \
+                 patch.object(bench, "discover_providers", return_value={"ready/fp8": "Ready"}), \
+                 patch.object(bench, "run_one", side_effect=fake_run), \
+                 redirect_stdout(StringIO()) as printed:
+                self.assertEqual(bench.main(["--num-requests", "15", "--max-tokens", "4096",
+                                             "--output", str(output)]), 0)
+            rows = [json.loads(line) for line in output.read_text().splitlines()]
+            self.assertEqual(len(rows), 15)
+            self.assertEqual(len({(row["id"], row["repeat"]) for row in rows}), 15)
+            self.assertIn("15/15", printed.getvalue())
+
     def test_ten_implicit_requests(self):
         self.assertEqual(len(bench.IDS), 10)
         for record_id in bench.IDS:
             body = bench.payload(bench.MODEL, "example", record_id)
             self.assertIn(f"Form {record_id}:", body["messages"][1]["content"])
             self.assertEqual(body["provider"]["only"], ["example"])
+            self.assertEqual(bench.payload(bench.MODEL, "example", record_id, 4096)["max_tokens"], 4096)
 
     def test_exact_gold_and_incomplete_are_distinct(self):
         response = {"choices": [{"finish_reason": "stop", "message": {"content": json.dumps({
