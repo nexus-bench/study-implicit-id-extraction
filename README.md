@@ -13,7 +13,7 @@ For example, a record beginning `Form K111:` should produce:
 {"id":"K111","nickname":"","middle_name":null}
 ```
 
-The [DeepSeek V4.1 Flash temperature-zero run](RESULTS-DS-TOP10-20-TEMPERATURE0.md)
+The [DeepSeek V4.1 Flash temperature-zero run](results/RESULTS-DS-TOP10-20-TEMPERATURE0.md)
 scored 20 requests per provider across ten pinned provider tags. Exact-match
 rates ranged from 10% to 100%. The report includes the full provider table and
 raw request/response evidence. These ten IDs are instances of one template,
@@ -92,12 +92,12 @@ differences in mind.
 
 | Model and scope | Report |
 | --- | --- |
-| DeepSeek V4.1 Flash, top 10, 20 requests each, temperature 0 | [Temperature-zero comparison](RESULTS-DS-TOP10-20-TEMPERATURE0.md) |
-| DeepSeek V4.1 Flash, top 10, 20 requests each, temperature 1 | [Temperature-one run](RESULTS-DS-TOP10-20.md) |
-| DeepSeek V4.1 Flash, top 5, 20 requests each | [Top-five twenty-request run](RESULTS-DS-TOP5-20.md) |
-| DeepSeek V4.1 Flash, top 5, 10 requests each | [Top-five ten-request run](RESULTS-DS-TOP5.md) |
-| DeepSeek V4.1 Flash, 22 providers, 10 requests each | [All-provider run](RESULTS.md) |
-| GLM-5.3-Flash, top 5, 10 requests each | [GLM run](RESULTS-GLM.md) |
+| DeepSeek V4.1 Flash, top 10, 20 requests each, temperature 0 | [Temperature-zero comparison](results/RESULTS-DS-TOP10-20-TEMPERATURE0.md) |
+| DeepSeek V4.1 Flash, top 10, 20 requests each, temperature 1 | [Temperature-one run](results/RESULTS-DS-TOP10-20.md) |
+| DeepSeek V4.1 Flash, top 5, 20 requests each, temperature 1 | [Top-five twenty-request run](results/RESULTS-DS-TOP5-20.md) |
+| DeepSeek V4.1 Flash, top 5, 10 requests each, temperature 1 | [Top-five ten-request run](results/RESULTS-DS-TOP5.md) |
+| DeepSeek V4.1 Flash, 22 providers, 10 requests each, temperature 1 | [All-provider run](results/RESULTS.md) |
+| GLM-5.3-Flash, top 5, 10 requests each, temperature 1 | [GLM run](results/RESULTS-GLM.md) |
 
 The prompts, expected answers, and scoring rule are self-contained in
 `bench.py`. The GLM option extends the original DeepSeek diagnostic.

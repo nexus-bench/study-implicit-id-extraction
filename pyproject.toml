@@ -2,6 +2,7 @@
 name = "vague-match-mirror"
 version = "0.1.0"
 description = "Small OpenRouter reproduction of an implicit record-ID extraction diagnostic"
+readme = "README.md"
 requires-python = ">=3.10"
 
 [project.scripts]

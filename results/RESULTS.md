@@ -1,11 +1,12 @@
 # DeepSeek V4.1 Flash: implicit ID extraction
 
 Run date: 2026-10-03. Model: `deepseek/deepseek-v4.1-flash` through OpenRouter.
+This run used temperature 1.
 The runner selected 22 provider tags from the live endpoint catalog and sent
 the same ten `Form K111:`–`Form K120:` cases to each. Each request pinned one
 provider tag, disabled fallback, and requested high reasoning effort and strict
 JSON schema. This archived run used a 4096-token cap, a 45-second socket
-timeout per attempt, and concurrency 3. The current [bench.py](bench.py)
+timeout per attempt, and concurrency 3. The current [bench.py](../bench.py)
 defaults differ; the evidence below contains each request body. See
 [raw request/response evidence](evidence/deepseek-v4.1-flash-2026-10-03.jsonl)
 for all 220 outcomes.

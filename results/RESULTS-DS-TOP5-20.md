@@ -1,6 +1,7 @@
 # DeepSeek V4.1 Flash: top-five, twenty-request run
 
 Run date: 2026-10-03. Model: `deepseek/deepseek-v4.1-flash` through OpenRouter.
+This run used temperature 1.
 The runner selected the five eligible provider tags with the highest recent
 median throughput reported by OpenRouter. It sent the same ten implicit
 `Form K111:`–`Form K120:` cases twice to each provider, for 20 scheduled

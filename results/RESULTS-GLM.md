@@ -1,6 +1,7 @@
 # GLM-5.3-Flash: implicit ID extraction
 
 Run date: 2026-10-03. Model: `z-ai/glm-5.3-flash` through OpenRouter.
+This run used temperature 1.
 The runner selected the five eligible provider tags with the highest recent
 median throughput reported by OpenRouter, then sent the same ten
 `Form K111:`–`Form K120:` cases to each. Each request pinned one provider tag,

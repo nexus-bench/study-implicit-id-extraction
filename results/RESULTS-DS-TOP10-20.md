@@ -1,7 +1,7 @@
 # DeepSeek V4.1 Flash: top-ten, twenty-request run
 
 Run date: 2026-10-03. Model: `deepseek/deepseek-v4.1-flash` through OpenRouter.
-This run used the default settings with `--top 10`: the ten eligible provider
+This run used temperature 1 and selected the ten eligible provider
 tags with the highest recent median throughput reported by OpenRouter. It sent
 the same ten implicit `Form K111:`–`Form K120:` cases twice to each provider,
 for 20 scheduled requests per provider. Each request pinned one provider tag,
