@@ -35,11 +35,12 @@ SCHEMA = {
 }
 
 
-def select_providers(catalog, model):
+def select_providers(catalog, model, top=None):
     data = catalog.get("data")
     if not isinstance(data, dict) or data.get("id") != model or not isinstance(data.get("endpoints"), list):
         raise ValueError("unexpected endpoint catalog response")
     providers = {}
+    throughput = {}
     for endpoint in data["endpoints"]:
         if not isinstance(endpoint, dict) or endpoint.get("status") != 0:
             continue
@@ -49,10 +50,16 @@ def select_providers(catalog, model):
             continue
         if REQUIRED_PARAMETERS <= set(parameters):
             providers[tag] = endpoint.get("provider_name") or tag
+            rate = endpoint.get("throughput_last_30m")
+            if isinstance(rate, dict) and isinstance(rate.get("p50"), (int, float)):
+                throughput[tag] = max(throughput.get(tag, 0), rate["p50"])
+    if top is not None:
+        ranked = sorted(throughput, key=lambda tag: (-throughput[tag], tag))
+        return {tag: providers[tag] for tag in ranked[:top]}
     return dict(sorted(providers.items()))
 
 
-def discover_providers(model, key, timeout):
+def discover_providers(model, key, timeout, top=None):
     parts = model.split("/")
     if len(parts) != 2 or not all(parts):
         raise ValueError("model must be an OpenRouter author/slug ID")
@@ -60,7 +67,7 @@ def discover_providers(model, key, timeout):
     headers = {"Authorization": f"Bearer {key}"} if key else {}
     try:
         with urlopen(Request(url, headers=headers), timeout=timeout) as response:
-            return select_providers(json.load(response), model)
+            return select_providers(json.load(response), model, top)
     except HTTPError as exc:
         raise ValueError(f"endpoint catalog returned HTTP {exc.code}") from exc
     except (URLError, TimeoutError, OSError, UnicodeError, json.JSONDecodeError) as exc:
@@ -199,6 +206,7 @@ def main(argv=None):
     target.add_argument("--provider", action="append", help="endpoint tag; repeat for a selected subset")
     target.add_argument("--list-providers", action="store_true", help="list eligible endpoints without making paid requests")
     target.add_argument("--all-providers", action="store_true", help="run ten requests against every eligible provider tag")
+    target.add_argument("--top", type=int, metavar="N", help="run the N eligible tags with highest recent median throughput")
     parser.add_argument("--model", default=MODEL)
     parser.add_argument("--concurrency", type=int, default=5)
     parser.add_argument("--timeout", type=float, default=60)
@@ -207,13 +215,15 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if args.concurrency < 1 or args.timeout <= 0 or not 0 <= args.retries <= 10:
         parser.error("concurrency and timeout must be positive; retries must be 0–10")
+    if args.top is not None and args.top < 1:
+        parser.error("--top must be positive")
     if args.provider and len(set(args.provider)) != len(args.provider):
         parser.error("provider slugs must be unique")
     key = os.environ.get("OPENROUTER_API_KEY")
     if not key and not args.list_providers:
         parser.error("set OPENROUTER_API_KEY")
     try:
-        available = discover_providers(args.model, key, args.timeout)
+        available = discover_providers(args.model, key, args.timeout, args.top)
     except ValueError as exc:
         parser.error(str(exc))
     if args.list_providers:
@@ -221,7 +231,7 @@ def main(argv=None):
         for tag, name in available.items():
             print(f"  {tag:32} {name}")
         return 0
-    providers = list(available) if args.all_providers else args.provider
+    providers = list(available) if args.all_providers or args.top else args.provider
     if not providers:
         parser.error("no eligible providers found for this model")
     missing = [tag for tag in providers if tag not in available]

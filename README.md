@@ -34,11 +34,18 @@ eligible provider:
 export OPENROUTER_API_KEY=...
 python bench.py --model z-ai/glm-5.3-flash --provider deepinfra/fp4 --provider fireworks
 python bench.py --model deepseek/deepseek-v4.1-flash --all-providers
+python bench.py --model deepseek/deepseek-v4.1-flash --top 5
+python bench.py --model z-ai/glm-5.3-flash --top 10
 ```
 
-`--all-providers` makes ten requests for every listed tag, so inspect the list
-first. The default is five requests at once across the whole run, with a
-60-second socket timeout per attempt. Adjust with `--concurrency` and
+`--top N` selects the N eligible provider tags with the highest p50 throughput
+reported by OpenRouter for the last 30 minutes. Tags without a throughput
+measurement are excluded, so fewer than N may be selected. Duplicate endpoints
+with one tag use the highest reported throughput. This selects for speed, not
+correctness, and the selected set can change between runs. `--all-providers`
+makes ten requests for every listed tag, so inspect the list first. The default
+is five requests at once across the whole run, with a 60-second socket timeout
+per attempt. Adjust with `--concurrency` and
 `--timeout`; `--retries` controls retries for HTTP 429 and 5xx responses.
 `Retry-After` is honored when supplied. A 429 starts a shared cooldown: all
 workers wait before their next attempt, including queued requests. Requests
