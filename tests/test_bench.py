@@ -124,6 +124,7 @@ class ExperimentTests(unittest.TestCase):
             bench.table(rows, ["ready/fp8"], "example/model", 20)
         self.assertIn("70%", output.getvalue())
         self.assertIn("14/20", output.getvalue())
+        self.assertIn("Test: Extract the ID implied by a Form label", output.getvalue())
 
     def test_num_requests_can_stop_partway_through_second_pass(self):
         with TemporaryDirectory() as directory:
