@@ -11,10 +11,12 @@ import random
 import sys
 import time
 from urllib.error import HTTPError, URLError
+from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 URL = "https://openrouter.ai/api/v1/chat/completions"
 MODEL = "deepseek/deepseek-v4.1-flash"
+REQUIRED_PARAMETERS = {"reasoning", "temperature", "top_p", "max_tokens", "response_format", "structured_outputs"}
 IDS = tuple(f"K{n}" for n in range(111, 121))
 SYSTEM = ("Extract only the requested fields from the supplied record. Return one JSON object "
           "matching the schema, without commentary or tool calls. Preserve case and Unicode. "
@@ -30,6 +32,38 @@ SCHEMA = {
     "required": ["id", "nickname", "middle_name"],
     "additionalProperties": False,
 }
+
+
+def select_providers(catalog, model):
+    data = catalog.get("data")
+    if not isinstance(data, dict) or data.get("id") != model or not isinstance(data.get("endpoints"), list):
+        raise ValueError("unexpected endpoint catalog response")
+    providers = {}
+    for endpoint in data["endpoints"]:
+        if not isinstance(endpoint, dict) or endpoint.get("status") != 0:
+            continue
+        tag = endpoint.get("tag")
+        parameters = endpoint.get("supported_parameters")
+        if not isinstance(tag, str) or not tag or not isinstance(parameters, list):
+            continue
+        if REQUIRED_PARAMETERS <= set(parameters):
+            providers[tag] = endpoint.get("provider_name") or tag
+    return dict(sorted(providers.items()))
+
+
+def discover_providers(model, key, timeout):
+    parts = model.split("/")
+    if len(parts) != 2 or not all(parts):
+        raise ValueError("model must be an OpenRouter author/slug ID")
+    url = "https://openrouter.ai/api/v1/models/" + "/".join(quote(part, safe="") for part in parts) + "/endpoints"
+    headers = {"Authorization": f"Bearer {key}"} if key else {}
+    try:
+        with urlopen(Request(url, headers=headers), timeout=timeout) as response:
+            return select_providers(json.load(response), model)
+    except HTTPError as exc:
+        raise ValueError(f"endpoint catalog returned HTTP {exc.code}") from exc
+    except (URLError, TimeoutError, OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"endpoint catalog unavailable: {type(exc).__name__}") from exc
 
 
 def payload(model, provider, record_id):
@@ -127,8 +161,10 @@ def table(rows, providers):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--provider", action="append", required=True,
-                        help="OpenRouter endpoint slug; repeat for each provider")
+    target = parser.add_mutually_exclusive_group(required=True)
+    target.add_argument("--provider", action="append", help="endpoint tag; repeat for a selected subset")
+    target.add_argument("--list-providers", action="store_true", help="list eligible endpoints without making paid requests")
+    target.add_argument("--all-providers", action="store_true", help="run ten requests against every eligible provider tag")
     parser.add_argument("--model", default=MODEL)
     parser.add_argument("--concurrency", type=int, default=3)
     parser.add_argument("--timeout", type=float, default=45)
@@ -137,14 +173,29 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if args.concurrency < 1 or args.timeout <= 0 or not 0 <= args.retries <= 10:
         parser.error("concurrency and timeout must be positive; retries must be 0–10")
-    if len(set(args.provider)) != len(args.provider):
+    if args.provider and len(set(args.provider)) != len(args.provider):
         parser.error("provider slugs must be unique")
     key = os.environ.get("OPENROUTER_API_KEY")
-    if not key:
+    if not key and not args.list_providers:
         parser.error("set OPENROUTER_API_KEY")
+    try:
+        available = discover_providers(args.model, key, args.timeout)
+    except ValueError as exc:
+        parser.error(str(exc))
+    if args.list_providers:
+        print(f"{args.model}: {len(available)} eligible provider tags")
+        for tag, name in available.items():
+            print(f"  {tag:32} {name}")
+        return 0
+    providers = list(available) if args.all_providers else args.provider
+    if not providers:
+        parser.error("no eligible providers found for this model")
+    missing = [tag for tag in providers if tag not in available]
+    if missing:
+        parser.error("provider unavailable or missing required parameters: " + ", ".join(missing))
     if args.output.exists():
         parser.error(f"output already exists: {args.output}")
-    jobs = [(provider, record_id) for provider in args.provider for record_id in IDS]
+    jobs = [(provider, record_id) for provider in providers for record_id in IDS]
     rows = []
     with args.output.open("x", encoding="utf-8") as stream:
         with ThreadPoolExecutor(max_workers=args.concurrency) as pool:
@@ -155,8 +206,8 @@ def main(argv=None):
                 rows.append(row)
                 stream.write(json.dumps(row, ensure_ascii=False) + "\n")
                 stream.flush()
-    rows.sort(key=lambda r: (args.provider.index(r["provider"]), IDS.index(r["id"])))
-    table(rows, args.provider)
+    rows.sort(key=lambda r: (providers.index(r["provider"]), IDS.index(r["id"])))
+    table(rows, providers)
     print(f"Details: {args.output}")
     return int(any(r["status"] in ("error", "invalid", "incomplete") for r in rows))
 

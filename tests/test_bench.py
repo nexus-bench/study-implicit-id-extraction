@@ -1,5 +1,9 @@
 import json
-from io import BytesIO
+from io import BytesIO, StringIO
+from contextlib import redirect_stdout
+import os
+from pathlib import Path
+from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
 from urllib.error import HTTPError
@@ -8,6 +12,43 @@ import bench
 
 
 class ExperimentTests(unittest.TestCase):
+    def test_catalog_filters_and_deduplicates_compatible_targets(self):
+        required = sorted(bench.REQUIRED_PARAMETERS)
+        catalog = {"data": {"id": "z-ai/glm-5.3-flash", "endpoints": [
+            {"tag": "ready/fp8", "provider_name": "Ready", "status": 0,
+             "supported_parameters": required},
+            {"tag": "ready/fp8", "provider_name": "Ready", "status": 0,
+             "supported_parameters": required},
+            {"tag": "down", "status": -2, "supported_parameters": required},
+            {"tag": "no-schema", "status": 0,
+             "supported_parameters": [p for p in required if p != "structured_outputs"]},
+        ]}}
+        self.assertEqual(bench.select_providers(catalog, "z-ai/glm-5.3-flash"), {"ready/fp8": "Ready"})
+        with self.assertRaises(ValueError):
+            bench.select_providers(catalog, "deepseek/deepseek-v4.1-flash")
+
+    def test_list_mode_makes_no_completion_requests(self):
+        with patch.object(bench, "discover_providers", return_value={"ready/fp8": "Ready"}), patch.object(bench, "run_one") as run:
+            with redirect_stdout(StringIO()) as output:
+                code = bench.main(["--model", "z-ai/glm-5.3-flash", "--list-providers"])
+        self.assertEqual(code, 0)
+        self.assertIn("ready/fp8", output.getvalue())
+        run.assert_not_called()
+
+    def test_all_providers_runs_ten_each(self):
+        with TemporaryDirectory() as directory:
+            output = Path(directory) / "results.jsonl"
+            def fake_run(provider, record_id, model, key, timeout, retries):
+                return {"provider": provider, "id": record_id, "status": "correct"}
+            with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}), \
+                 patch.object(bench, "discover_providers", return_value={"ready/fp8": "Ready"}), \
+                 patch.object(bench, "run_one", side_effect=fake_run) as run, \
+                 redirect_stdout(StringIO()):
+                code = bench.main(["--model", "z-ai/glm-5.3-flash", "--all-providers", "--output", str(output)])
+            self.assertEqual(code, 0)
+            self.assertEqual(run.call_count, 10)
+            self.assertEqual(len(output.read_text().splitlines()), 10)
+
     def test_ten_implicit_requests(self):
         self.assertEqual(len(bench.IDS), 10)
         for record_id in bench.IDS:

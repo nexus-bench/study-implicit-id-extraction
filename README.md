@@ -6,21 +6,38 @@ historical task asks a model to extract `id`, an explicitly empty `nickname`, an
 an absent `middle_name`. Each provider receives ten `Form K111:` through
 `Form K120:` requests. The explicit `Record ID:` control is omitted.
 
-The script uses OpenRouter's chat completions endpoint with the DeepSeek V4.1
-Flash model, `reasoning.effort=high`, strict JSON schema, temperature 1, top_p 1,
-and a 4096-token cap. `provider.only` pins each endpoint and disables fallbacks.
-Provider slugs must be available for this model and support these parameters.
+The script uses OpenRouter's chat completions endpoint. It defaults to DeepSeek
+V4.1 Flash; `--model z-ai/glm-5.3-flash` runs the same task on GLM-5.3-Flash.
+Requests use `reasoning.effort=high`, strict JSON schema, temperature 1, top_p 1,
+and a 4096-token cap. `provider.only` pins each provider tag and disables
+fallbacks.
 
 ## Run
 
-Python 3.10+ is enough; there are no runtime dependencies.
+Python 3.10+ is enough; there are no runtime dependencies. Discover eligible
+provider tags for either model without making completion requests:
+
+```sh
+python bench.py --model deepseek/deepseek-v4.1-flash --list-providers
+python bench.py --model z-ai/glm-5.3-flash --list-providers
+```
+
+The script fetches the live [OpenRouter model endpoint catalog](https://openrouter.ai/docs/api/api-reference/endpoints/list-all-endpoints-for-a-model), keeps status-0 endpoints advertising the reasoning and structured-output parameters used here, and deduplicates provider tags. Catalog eligibility does not guarantee account access or a successful completion. A tag can represent more than one endpoint under the same provider.
+
+To make paid requests, set your key and explicitly select a subset or every
+eligible provider:
 
 ```sh
 export OPENROUTER_API_KEY=...
-python bench.py --provider PROVIDER_SLUG --provider ANOTHER_SLUG
+python bench.py --model z-ai/glm-5.3-flash --provider deepinfra/fp4 --provider fireworks
+python bench.py --model deepseek/deepseek-v4.1-flash --all-providers
 ```
 
-Use endpoint slugs from the [OpenRouter model endpoint catalog](https://openrouter.ai/api/v1/models/deepseek/deepseek-v4.1-flash/endpoints), not display names. The default is three requests at once across the whole run. Adjust with `--concurrency`; `--retries` controls retries for HTTP 429 and 5xx responses. `Retry-After` is honored when supplied. Each logical request is scored once after its final attempt.
+`--all-providers` makes ten requests for every listed tag, so inspect the list
+first. The default is three requests at once across the whole run. Adjust with
+`--concurrency`; `--retries` controls retries for HTTP 429 and 5xx responses.
+`Retry-After` is honored when supplied. Each logical request is scored once
+after its final attempt.
 
 The table reports exact JSON correctness for the ten fuzzy ID cases, plus
 wrong answers and transport/format failures. Full request and response records go to
@@ -34,4 +51,5 @@ repeat a request that the server already processed and may incur another charge.
 Source: `packages/evaluation/src/id-diagnostic.ts` and
 `docs/OPENROUTER_ID_STUDY.md` on the source repository's
 `codex/openrouter-id-study` branch. This mirror uses ten implicit cases instead
-of its larger paired, repeated panel.
+of its larger paired, repeated panel. The GLM model option is an extension of
+the historical DeepSeek diagnostic.
