@@ -262,7 +262,7 @@ def main(argv=None):
     parser.add_argument("--temperature", type=float, default=0, help="sampling temperature from 0 to 2 (default: 0)")
     volume = parser.add_mutually_exclusive_group()
     volume.add_argument("--num-requests", type=int, metavar="N", help="requests per provider (default: 20)")
-    volume.add_argument("--repeats", type=int, help="full passes over the ten fuzzy cases; 1 gives ten requests")
+    volume.add_argument("--repeats", type=int, help="full passes over the ten implicit-ID cases; 1 gives ten requests")
     parser.add_argument("--output", type=Path, help="JSONL output path; default is a new timestamped file")
     args = parser.parse_args(argv)
     if not (args.provider or args.list_providers or args.all_providers or args.top):
