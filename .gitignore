@@ -6,6 +6,8 @@ build/
 dist/
 results.jsonl
 results-*.jsonl
+paired-results-*.jsonl
+/paired-manifest-*.json
 .env
 .env.*
 *.env

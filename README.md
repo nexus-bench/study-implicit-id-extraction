@@ -86,12 +86,44 @@ incur another charge if the server processed the earlier attempt.
 
 ## Recorded runs
 
+### Paired provider experiment
+
+The existing `bench.py` runner has a `--paired` mode for a matched implicit/explicit-ID study. It freezes the eligible provider tags and 100 distinct cases in a JSON manifest. Every provider receives both wordings of each case at temperatures 0 and 1. Only the ID heading changes between each implied/explicit pair. The same system instruction, strict JSON schema, high reasoning effort, `top_p=1`, output-token cap, and fallback-disabled provider routing apply throughout. Jobs are shuffled in paired blocks to reduce time-order effects. The JSONL output is append-only and `--run` resumes jobs already recorded there.
+
+The manifest for the October 4 run is [`results/PAIRED-MANIFEST-20261004.json`](results/PAIRED-MANIFEST-20261004.json). The endpoint catalog had 21 eligible tags at preparation time; `open-inference/fp4` from the earlier 22-provider run was absent. To repeat this exact panel, use the committed manifest. To prepare a fresh panel from the live catalog, use `--prepare` with a new manifest path.
+
+```sh
+python bench.py --paired --run \
+  --manifest results/PAIRED-MANIFEST-20261004.json \
+  --output paired-results-20261004.jsonl \
+  --concurrency 24
+```
+
+Preparation used `--max-tokens 32768 --timeout 240 --retries 3`. These values are stored in the manifest and used by every resumed run. Completion requests are paid. The `--limit N` option runs at most N remaining jobs for a preflight.
+
+The paired report scores correct IDs among valid, completed JSON answers as its primary measure. It shows errors in the other two fields separately and also reports the exact three-field JSON total. Every score uses all 100 scheduled cases as its denominator.
+
+If any requests end in HTTP 429 after the initial retry budget, rerun with `--retry-rate-limits`. The runner also recognizes 429 errors embedded in HTTP 200 response bodies. This mode retries only those jobs, allows up to ten retries, and appends a new raw attempt. For scoring, use the latest row for each `job_key`; an unresolved 429 is a request error, not a wrong extraction answer.
+
+```sh
+python bench.py --paired --run --retry-rate-limits \
+  --manifest results/PAIRED-MANIFEST-20261004.json \
+  --output paired-results-20261004.jsonl \
+  --concurrency 1
+python bench.py --paired --report \
+  --manifest results/PAIRED-MANIFEST-20261004.json \
+  --output results/PAIRED-RAW-20261004.jsonl.gz
+```
+
+The archived raw JSONL is gzip compressed. The runner can report directly from it; to resume a run, use an uncompressed JSONL output path. The October 4 run used concurrency 24 for the main pass and concurrency 1 for rate-limit retries. It recorded 8,485 raw attempts for 8,400 unique jobs.
+
 Each report links its own raw evidence and documents its settings. Runs used
 different provider sets or settings; compare their percentages with those
 differences in mind.
 
 | Model and scope | Report |
 | --- | --- |
+| DeepSeek V4.1 Flash, 21 provider tags, 100 paired cases, temperatures 0 and 1 | [Paired study](results/PAIRED-STUDY-20261004.md) |
 | DeepSeek V4.1 Flash, top 10, 20 requests each, temperature 0 | [Temperature-zero comparison](results/RESULTS-DS-TOP10-20-TEMPERATURE0.md) |
 | DeepSeek V4.1 Flash, top 10, 20 requests each, temperature 1 | [Temperature-one run](results/RESULTS-DS-TOP10-20.md) |
 | DeepSeek V4.1 Flash, top 5, 20 requests each, temperature 1 | [Top-five twenty-request run](results/RESULTS-DS-TOP5-20.md) |
@@ -99,8 +131,9 @@ differences in mind.
 | DeepSeek V4.1 Flash, 22 providers, 10 requests each, temperature 1 | [All-provider run](results/RESULTS.md) |
 | GLM-5.3-Flash, top 5, 10 requests each, temperature 1 | [GLM run](results/RESULTS-GLM.md) |
 
-The prompts, expected answers, and scoring rule are self-contained in
-`bench.py`. The GLM option extends the original DeepSeek diagnostic.
+The original prompts, expected answers, and scoring rule are in `bench.py`.
+The paired mode's case generation and ID-specific report are in
+`paired_experiment.py`. The GLM option extends the original DeepSeek diagnostic.
 
 ## License
 

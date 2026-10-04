@@ -10,9 +10,56 @@ from unittest.mock import patch
 from urllib.error import HTTPError
 
 import bench
+import paired_experiment
 
 
 class ExperimentTests(unittest.TestCase):
+    def test_paired_panel_has_unique_matched_jobs(self):
+        cases = paired_experiment.cases()
+        self.assertEqual(len(cases), 100)
+        self.assertEqual(len({case["id"] for case in cases}), 100)
+        manifest = {"providers": ["a", "b"], "cases": cases, "shuffle_seed": 20261004}
+        jobs = list(paired_experiment.jobs(manifest))
+        self.assertEqual(len(jobs), 800)
+        self.assertEqual(len({paired_experiment.job_key(p, c["id"], t, q)
+                              for p, c, t, q in jobs}), 800)
+        for case in cases:
+            implied = paired_experiment.user_message(case, "implied")
+            explicit = paired_experiment.user_message(case, "explicit")
+            self.assertEqual(implied.removeprefix(f"Form {case['id']}: "),
+                             explicit.removeprefix(f"Record ID: {case['id']}. "))
+
+    def test_paired_rate_limit_retry_preserves_raw_attempt(self):
+        with TemporaryDirectory() as directory:
+            manifest_path = Path(directory) / "manifest.json"
+            output = Path(directory) / "results.jsonl"
+            manifest = {"model": bench.MODEL, "providers": ["provider"],
+                        "cases": paired_experiment.cases(), "shuffle_seed": 1,
+                        "max_tokens": 32768, "timeout": 240, "retries": 3}
+            manifest_path.write_text(json.dumps(manifest))
+            job = next(paired_experiment.jobs(manifest))
+            job_key = paired_experiment.job_key(job[0], job[1]["id"], job[2], job[3])
+            output.write_text(json.dumps({"job_key": job_key, "status": "error", "error": "HTTP 429"}) + "\n")
+            response = {"choices": [{"finish_reason": "stop", "message": {"content": json.dumps({
+                "id": job[1]["id"], "nickname": "", "middle_name": None})}}]}
+            with patch.object(paired_experiment.bench, "resolve_key", return_value="test-key"), \
+                 patch.object(paired_experiment.bench, "request", return_value=(response, 1, None)) as request, \
+                 redirect_stderr(StringIO()):
+                self.assertEqual(paired_experiment.main(["--run", "--retry-rate-limits", "--limit", "1",
+                                                        "--manifest", str(manifest_path), "--output", str(output)]), 0)
+            rows = [json.loads(line) for line in output.read_text().splitlines()]
+            self.assertEqual(len(rows), 2)
+            self.assertEqual(rows[-1]["status"], "correct")
+            self.assertEqual(rows[-1]["job_key"], job_key)
+            self.assertEqual(request.call_args.args[3], 10)
+
+    def test_paired_id_score_separates_other_field_errors(self):
+        row = {"id": "K201", "status": "wrong", "response": {"choices": [{"message": {
+            "content": '{"id":"K201","nickname":null,"middle_name":null}'}}]}}
+        self.assertTrue(paired_experiment.id_is_correct(row))
+        row["response"]["choices"][0]["message"]["content"] = '{"id":"","nickname":"","middle_name":null}'
+        self.assertFalse(paired_experiment.id_is_correct(row))
+
     def test_terminal_progress_updates_one_line(self):
         class Terminal(StringIO):
             def isatty(self):
@@ -177,6 +224,14 @@ class ExperimentTests(unittest.TestCase):
                     response, attempts, error = bench.request({}, "test-key", 5, 2)
                 self.assertEqual((response, attempts, error), ({"choices": []}, 2, None))
                 self.assertEqual(send.call_count, 2)
+
+    def test_retry_429_embedded_in_successful_http_response(self):
+        first = BytesIO(b'{"error":{"code":429,"message":"rate limited"}}')
+        second = BytesIO(b'{"choices":[]}')
+        with patch.object(bench, "urlopen", side_effect=[first, second]) as send, patch.object(bench.time, "sleep"):
+            response, attempts, error = bench.request({}, "test-key", 5, 2)
+        self.assertEqual((response, attempts, error), ({"choices": []}, 2, None))
+        self.assertEqual(send.call_count, 2)
 
     def test_no_retry_for_bad_request(self):
         first = HTTPError(bench.URL, 400, "bad request", {}, BytesIO(b""))
