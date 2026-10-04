@@ -169,7 +169,17 @@ def request(body, key, timeout, retries, cooldown=None):
         })
         try:
             with urlopen(req, timeout=timeout) as response:
-                return json.load(response), attempt + 1, None
+                result = json.load(response)
+                if isinstance(result, dict) and isinstance(result.get("error"), dict) and result["error"].get("code") == 429:
+                    delay = retry_delay(None, attempt)
+                    if cooldown is not None:
+                        cooldown.defer(delay)
+                    if attempt < retries:
+                        if cooldown is None:
+                            time.sleep(delay)
+                        continue
+                    return result, attempt + 1, "HTTP 429"
+                return result, attempt + 1, None
         except HTTPError as exc:
             code = exc.code
             retry_after = exc.headers.get("Retry-After")
@@ -247,6 +257,11 @@ def progress(done, total, counts):
 
 
 def main(argv=None):
+    if argv is None:
+        argv = sys.argv[1:]
+    if "--paired" in argv:
+        import paired_experiment
+        return paired_experiment.main([arg for arg in argv if arg != "--paired"])
     parser = argparse.ArgumentParser(description=__doc__)
     target = parser.add_mutually_exclusive_group()
     target.add_argument("--provider", action="append", help="endpoint tag; repeat for a selected subset")
